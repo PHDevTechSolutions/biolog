@@ -27,6 +27,7 @@ interface UserDetails {
   Email: string;
   TSM: string;
   faceDescriptors?: number[][];
+  faceVerificationEnabled?: boolean;
 }
 
 interface CreateAttendanceProps {
@@ -250,6 +251,7 @@ export default function CreateAttendance({
               <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Photo Verification</p>
               <Camera 
                 registeredDescriptors={userDetails.faceDescriptors}
+                skipFaceVerification={userDetails.faceVerificationEnabled === false}
                 onCaptureAction={(img, face) => {
                   setCapturedImage(img);
                   setFaceData(face);

@@ -33,6 +33,7 @@ interface UserDetails {
   Email: string;
   Role: string;
   faceDescriptors?: number[][];
+  faceVerificationEnabled?: boolean;
 }
 
 interface CreateAttendanceProps {
@@ -397,6 +398,7 @@ export default function CreateSalesAttendance({
               </p>
               <Camera
                 registeredDescriptors={userDetails.faceDescriptors}
+                skipFaceVerification={userDetails.faceVerificationEnabled === false}
                 onCaptureAction={(img, face) => {
                   setCapturedImage(img);
                   setFaceData(face);

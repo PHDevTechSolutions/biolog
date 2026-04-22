@@ -152,6 +152,7 @@ interface UserDetails {
     canCreateAttendance: boolean;
     canCreateSiteVisit: boolean;
   };
+  faceVerificationEnabled?: boolean;
 }
 
 interface FormData {
@@ -951,6 +952,7 @@ function ProfileTab({
   onFaceRegister,
   onBiometricRegister,
   onUpdateSecondaryEmail,
+  onUpdateFaceVerification,
 }: {
   userDetails: UserDetails | null;
   userId: string | null | undefined;
@@ -958,6 +960,7 @@ function ProfileTab({
   onFaceRegister: () => void;
   onBiometricRegister: () => void;
   onUpdateSecondaryEmail: (email: string) => void;
+  onUpdateFaceVerification: (enabled: boolean) => void;
 }) {
   const [sessions, setSessions] = useState<any[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -1199,6 +1202,43 @@ function ProfileTab({
             </button>
           </div>
 
+          {/* Face Verification Toggle */}
+          <div className="w-full flex items-center gap-4 bg-white rounded-2xl border border-gray-100 px-4 py-4 text-left shadow-sm">
+            <div className="w-11 h-11 rounded-[14px] bg-[var(--brand-light)] flex items-center justify-center flex-shrink-0">
+              <User size={20} className="text-[var(--brand-primary)]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-gray-800">Face Verification</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {userDetails?.faceVerificationEnabled !== false ? "Require face match for attendance" : "Regular photo only (no face check)"}
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                if (!userId) return;
+                const newStatus = !(userDetails?.faceVerificationEnabled !== false);
+                try {
+                  const res = await fetch("/api/profile-update", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId, faceVerificationEnabled: newStatus }),
+                  });
+                  if (res.ok) {
+                    toast.success(`Face verification ${newStatus ? "enabled" : "disabled"}`);
+                    onUpdateFaceVerification(newStatus);
+                  } else {
+                    toast.error("Failed to update face verification");
+                  }
+                } catch (e) {
+                  toast.error("An error occurred");
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userDetails?.faceVerificationEnabled !== false ? 'bg-[var(--brand-primary)]' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userDetails?.faceVerificationEnabled !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
           <button
             onClick={onFaceRegister}
             className="w-full flex items-center gap-4 bg-white rounded-2xl border border-gray-100 px-4 py-4 text-left hover:border-[var(--brand-primary)]/30 hover:bg-[var(--brand-light)] active:scale-[0.98] transition-all group shadow-sm"
@@ -1382,6 +1422,7 @@ function ActivityPage() {
           TSM: data.TSM ?? "",
           Directories: data.Directories ?? [],
           permissions: data.permissions ?? { canCreateAttendance: true, canCreateSiteVisit: true },
+          faceVerificationEnabled: data.faceVerificationEnabled ?? true,
         });
         setError(null);
       } catch { setError("Failed to load user data."); }
@@ -1671,6 +1712,10 @@ function ActivityPage() {
     }
   };
 
+  const handleUpdateFaceVerification = (enabled: boolean) => {
+    setUserDetails(prev => prev ? { ...prev, faceVerificationEnabled: enabled } : null);
+  };
+
   const renderActiveTab = () => {
     switch (activeTab) {
       case "home":
@@ -1694,7 +1739,7 @@ function ActivityPage() {
       case "reports":
         return <ReportsTab monthlyStats={monthlyStats} allLogs={allVisibleAccounts} userId={userId} />;
       case "profile":
-        return <ProfileTab userDetails={userDetails} userId={userId} onLogout={handleLogout} onFaceRegister={() => setFaceRegisterOpen(true)} onBiometricRegister={handleBiometricRegister} onUpdateSecondaryEmail={handleUpdateSecondaryEmail} />;
+        return <ProfileTab userDetails={userDetails} userId={userId} onLogout={handleLogout} onFaceRegister={() => setFaceRegisterOpen(true)} onBiometricRegister={handleBiometricRegister} onUpdateSecondaryEmail={handleUpdateSecondaryEmail} onUpdateFaceVerification={handleUpdateFaceVerification} />;
       case "admin":
         return <AdminTab userId={userId} />;
       default:
@@ -1811,7 +1856,8 @@ function ActivityPage() {
           ReferenceID: userDetails?.ReferenceID ?? "",
           Email: userDetails?.Email ?? "",
           TSM: userDetails?.TSM ?? "",
-          faceDescriptors: userDetails?.faceDescriptors
+          faceDescriptors: userDetails?.faceDescriptors,
+          faceVerificationEnabled: userDetails?.faceVerificationEnabled
         } as any}
         fetchAccountAction={fetchAccountAction}
         setFormAction={setFormData}
@@ -1826,7 +1872,8 @@ function ActivityPage() {
           Email: userDetails?.Email ?? "",
           TSM: userDetails?.TSM ?? "",
           Role: userDetails?.Role ?? "",
-          faceDescriptors: userDetails?.faceDescriptors
+          faceDescriptors: userDetails?.faceDescriptors,
+          faceVerificationEnabled: userDetails?.faceVerificationEnabled
         } as any}
         fetchAccountAction={fetchAccountAction}
         setFormAction={setFormData}

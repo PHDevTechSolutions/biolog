@@ -10,6 +10,7 @@ interface CameraProps {
   onRegisterAction?: (descriptors: number[][]) => void;
   mode?: "capture" | "register";
   registeredDescriptors?: number[][];
+  skipFaceVerification?: boolean;
 }
 
 const COUNTDOWN_SECONDS = 3;
@@ -21,6 +22,7 @@ export default function Camera({
   onRegisterAction,
   mode = "capture",
   registeredDescriptors,
+  skipFaceVerification = false,
 }: CameraProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -375,7 +377,7 @@ export default function Camera({
 
     if (capturedImage || countdown !== null) return;
 
-    const canCapture = currentFaceStatus === "detected" || currentFaceStatus === "unsupported";
+    const canCapture = skipFaceVerification || currentFaceStatus === "detected" || currentFaceStatus === "unsupported";
     if (!canCapture) return;
 
     if (currentMode === "register") {
@@ -383,19 +385,21 @@ export default function Camera({
       return;
     }
 
-    // capture mode checks
-    const isRegistered = currentDescriptors && currentDescriptors.length > 0;
-    if (!isRegistered) {
-      toast.error("Biometrics not registered! Please register your face first.");
-      return;
-    }
-    if (faceMatcherRef.current && currentIsMatch === false) {
-      toast.error("Identity mismatch! Please ensure you are the registered user.");
-      return;
+    // capture mode checks - skip if face verification is disabled
+    if (!skipFaceVerification) {
+      const isRegistered = currentDescriptors && currentDescriptors.length > 0;
+      if (!isRegistered) {
+        toast.error("Biometrics not registered! Please register your face first.");
+        return;
+      }
+      if (faceMatcherRef.current && currentIsMatch === false) {
+        toast.error("Identity mismatch! Please ensure you are the registered user.");
+        return;
+      }
     }
 
     setCountdown(COUNTDOWN_SECONDS);
-  }, [capturedImage, countdown, registerTake]);
+  }, [capturedImage, countdown, registerTake, skipFaceVerification]);
 
   useEffect(() => {
     if (countdown === null) return;
@@ -460,13 +464,14 @@ export default function Camera({
   const getStatusLabel = () => {
     if (faceStatus === "idle") return "Starting camera…";
     if (faceStatus === "unsupported") return "Tap to capture";
-    if (faceStatus === "no-face") return "No face detected";
+    if (faceStatus === "no-face") return skipFaceVerification ? "No face detected — tap to capture anyway" : "No face detected";
     if (faceStatus === "multiple") return "Multiple faces detected";
     if (faceStatus === "detected") {
       if (mode === "register") {
         const step = Math.min(registrationStep, 2);
         return `${registrationGuidance[step].icon} Step ${registrationTakesCount + 1}/3: ${registrationGuidance[step].label}`;
       }
+      if (skipFaceVerification) return "Face detected — tap to capture";
       const isRegistered = registeredDescriptors && registeredDescriptors.length > 0;
       if (!isRegistered) return "User not registered — capture blocked";
       if (isMatch === null) return "Face detected — verifying identity…";
@@ -480,7 +485,7 @@ export default function Camera({
   const statusColor = isGreenStatus ? "#1A7A4A" : faceStatus === "detected" ? "#CC1318" : faceStatus === "multiple" ? "#A0611A" : faceStatus === "no-face" ? "#CC1318" : "#6B7280";
   const statusBg = isGreenStatus ? "bg-[#EEF7F2]" : faceStatus === "detected" ? "bg-[#FEF0F0]" : faceStatus === "multiple" ? "bg-[#FDF4E7]" : faceStatus === "no-face" ? "bg-[#FEF0F0]" : "bg-gray-100";
 
-  const canTap = faceStatus === "detected" || faceStatus === "unsupported";
+  const canTap = skipFaceVerification || faceStatus === "detected" || faceStatus === "unsupported";
 
   return (
     <div className="w-full flex flex-col gap-3">
@@ -554,9 +559,11 @@ export default function Camera({
                   <span className="text-white text-[12px] font-medium">
                     {mode === "register"
                       ? `Tap to take photo ${registrationTakesCount + 1}/3`
-                      : (!(registeredDescriptors && registeredDescriptors.length > 0)
-                          ? "User not registered"
-                          : (isMatch === false ? "Identity mismatch!" : "Tap to capture"))}
+                      : skipFaceVerification
+                        ? "Tap to capture photo"
+                        : (!(registeredDescriptors && registeredDescriptors.length > 0)
+                            ? "User not registered"
+                            : (isMatch === false ? "Identity mismatch!" : "Tap to capture"))}
                   </span>
                 </div>
               </div>
