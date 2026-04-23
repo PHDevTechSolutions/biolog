@@ -8,19 +8,56 @@ import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
 import { AppSidebar } from "@/components/app-sidebar";
 
-import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, } from "@/components/ui/breadcrumb";
+import {
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbList,
+    BreadcrumbPage,
+} from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 
-import { SidebarInset, SidebarProvider, SidebarTrigger, } from "@/components/ui/sidebar";
-import { Table, TableCaption, TableHeader, TableRow, TableHead, TableBody, TableCell, } from "@/components/ui/table";
-import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext, PaginationLink, PaginationEllipsis, } from "@/components/ui/pagination";
-import { Item, ItemContent, ItemTitle, ItemDescription, ItemActions, } from "@/components/ui/item";
+import {
+    SidebarInset,
+    SidebarProvider,
+    SidebarTrigger,
+} from "@/components/ui/sidebar";
+import {
+    Table,
+    TableCaption,
+    TableHeader,
+    TableRow,
+    TableHead,
+    TableBody,
+    TableCell,
+} from "@/components/ui/table";
+import {
+    Pagination,
+    PaginationContent,
+    PaginationItem,
+    PaginationPrevious,
+    PaginationNext,
+    PaginationLink,
+    PaginationEllipsis,
+} from "@/components/ui/pagination";
+import {
+    Item,
+    ItemContent,
+    ItemTitle,
+    ItemDescription,
+    ItemActions,
+} from "@/components/ui/item";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Search, DownloadCloud } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, } from "@/components/ui/dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog";
 
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
@@ -59,7 +96,10 @@ export default function Page() {
 
     const [posts, setPosts] = useState<ActivityLog[]>([]);
     const [usersMap, setUsersMap] = useState<
-        Record<string, { Firstname: string; Lastname: string; profilePicture?: string }>
+        Record<
+            string,
+            { Firstname: string; Lastname: string; profilePicture?: string }
+        >
     >({});
 
     const [loading, setLoading] = useState(false);
@@ -68,20 +108,28 @@ export default function Page() {
     // Filters and pagination state
     const [searchQuery, setSearchQuery] = useState("");
     const [filterType, setFilterType] = useState<string | null>(null);
-    const [dateCreatedFilterRange, setDateCreatedFilterRange] = useState<DateRange | undefined>(undefined);
+    const [dateCreatedFilterRange, setDateCreatedFilterRange] = useState<
+        DateRange | undefined
+    >(undefined);
 
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
 
     // Edit dialog state
     const [editDialogOpen, setEditDialogOpen] = useState(false);
-    const [editingPost, setEditingPost] = useState<null | { _id?: string; Remarks: string }>(null);
+    const [editingPost, setEditingPost] = useState<null | {
+        _id?: string;
+        Remarks: string;
+    }>(null);
     const [remarksInput, setRemarksInput] = useState("");
 
     // Expanded rows state
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
     const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
-    const [selectedPhoto, setSelectedPhoto] = useState<{ url?: string; date?: string } | null>(null);
+    const [selectedPhoto, setSelectedPhoto] = useState<{
+        url?: string;
+        date?: string;
+    } | null>(null);
 
     // Sync userId from query param to context
     useEffect(() => {
@@ -100,7 +148,9 @@ export default function Page() {
             }
             try {
                 setLoading(true);
-                const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`);
+                const res = await fetch(
+                    `/api/user?id=${encodeURIComponent(queryUserId)}`,
+                );
                 if (!res.ok) throw new Error("Failed to fetch user data");
                 const data = await res.json();
                 setUserDetails({
@@ -150,14 +200,22 @@ export default function Page() {
                     }
 
                     if (dateCreatedFilterRange?.from) {
-                        params.append("startDate", dateCreatedFilterRange.from.toISOString());
+                        params.append(
+                            "startDate",
+                            dateCreatedFilterRange.from.toISOString(),
+                        );
                         params.append(
                             "endDate",
-                            (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString()
+                            (
+                                dateCreatedFilterRange.to ??
+                                dateCreatedFilterRange.from
+                            ).toISOString(),
                         );
                     }
 
-                    const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
+                    const res = await fetch(
+                        `/api/ModuleSales/Activity/FetchLog?${params.toString()}`,
+                    );
                     if (!res.ok) throw new Error("Failed to fetch logs");
 
                     const data = await res.json();
@@ -184,14 +242,25 @@ export default function Page() {
         async function fetchUsersForPosts() {
             if (posts.length === 0) return;
 
-            const uniqueRefs = Array.from(new Set(posts.map((p) => p.ReferenceID)));
+            const uniqueRefs = Array.from(
+                new Set(posts.map((p) => p.ReferenceID)),
+            );
 
             try {
-                const res = await fetch(`/api/users?referenceIDs=${uniqueRefs.join(",")}`);
+                const res = await fetch(
+                    `/api/users?referenceIDs=${uniqueRefs.join(",")}`,
+                );
                 if (!res.ok) throw new Error("Failed to fetch users");
                 const usersData = await res.json();
 
-                const map: Record<string, { Firstname: string; Lastname: string; profilePicture?: string }> = {};
+                const map: Record<
+                    string,
+                    {
+                        Firstname: string;
+                        Lastname: string;
+                        profilePicture?: string;
+                    }
+                > = {};
                 usersData.forEach((user: any) => {
                     map[user.ReferenceID] = {
                         Firstname: user.Firstname,
@@ -201,8 +270,7 @@ export default function Page() {
                 });
 
                 setUsersMap(map);
-            } catch (error) {
-            }
+            } catch (error) {}
         }
         fetchUsersForPosts();
     }, [posts]);
@@ -211,28 +279,51 @@ export default function Page() {
         if (!start && !end) return true;
 
         const date = new Date(dateStr);
-        const dateYMD = new Date(date.getFullYear(), date.getMonth(), date.getDate()); // local midnight
+        const dateYMD = new Date(
+            date.getFullYear(),
+            date.getMonth(),
+            date.getDate(),
+        ); // local midnight
 
         if (start && end) {
-            const startYMD = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-            const endYMD = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+            const startYMD = new Date(
+                start.getFullYear(),
+                start.getMonth(),
+                start.getDate(),
+            );
+            const endYMD = new Date(
+                end.getFullYear(),
+                end.getMonth(),
+                end.getDate(),
+            );
             // inclusive range
             return dateYMD >= startYMD && dateYMD <= endYMD;
         } else if (start) {
-            const startYMD = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+            const startYMD = new Date(
+                start.getFullYear(),
+                start.getMonth(),
+                start.getDate(),
+            );
             return dateYMD.getTime() === startYMD.getTime();
         } else if (end) {
-            const endYMD = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+            const endYMD = new Date(
+                end.getFullYear(),
+                end.getMonth(),
+                end.getDate(),
+            );
             return dateYMD.getTime() === endYMD.getTime();
         }
         return true;
     }
 
     // Filtering logic
-    const filteredByReference = posts.filter((post) => post.ReferenceID === userDetails.ReferenceID);
+    const filteredByReference = posts.filter(
+        (post) => post.ReferenceID === userDetails.ReferenceID,
+    );
 
     const allVisibleAccounts =
-        userDetails.Role === "SuperAdmin" || userDetails.Department === "Human Resources"
+        userDetails.Role === "SuperAdmin" ||
+        userDetails.Department === "Human Resources"
             ? posts
             : filteredByReference;
 
@@ -248,17 +339,25 @@ export default function Page() {
 
             const matchesType = filterType ? post.Type === filterType : true;
 
-            const matchesDate = isDateInRange(post.date_created, dateCreatedFilterRange?.from, dateCreatedFilterRange?.to);
+            const matchesDate = isDateInRange(
+                post.date_created,
+                dateCreatedFilterRange?.from,
+                dateCreatedFilterRange?.to,
+            );
 
             return matchesSearch && matchesType && matchesDate;
         })
-        .sort((a, b) => new Date(b.date_created).getTime() - new Date(a.date_created).getTime());
+        .sort(
+            (a, b) =>
+                new Date(b.date_created).getTime() -
+                new Date(a.date_created).getTime(),
+        );
 
     // Pagination
     const pageCount = Math.ceil(filteredAccounts.length / itemsPerPage);
     const paginatedAccounts = filteredAccounts.slice(
         (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
+        currentPage * itemsPerPage,
     );
 
     // Reset page on filters change
@@ -283,7 +382,10 @@ export default function Page() {
             const res = await fetch(`/api/ModuleSales/Activity/UpdateLog`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ _id: editingPost._id, Remarks: remarksInput }),
+                body: JSON.stringify({
+                    _id: editingPost._id,
+                    Remarks: remarksInput,
+                }),
             });
 
             if (!res.ok) {
@@ -291,60 +393,12 @@ export default function Page() {
                 throw new Error(errorBody.error || "Failed to update log");
             }
 
-<<<<<<< HEAD
-        setUserDetails({
-          UserId: data._id ?? "",
-          Firstname: data.Firstname ?? "",
-          Lastname: data.Lastname ?? "",
-          Email: data.Email ?? "",
-          Role: data.Role ?? "",
-          Department: data.Department ?? "",
-          Company: data.Company ?? "",
-          ReferenceID: data.ReferenceID ?? "",
-          profilePicture: data.profilePicture ?? "",
-        });
-      } catch (err) {
-        setError("Failed to load user data.");
-      }
-    };
-
-    fetchUserData();
-  }, [queryUserId]);
-
-  // Fetch activity logs from API
-  useEffect(() => {
-    const fetchAllActivityLogs = async () => {
-      if (!userDetails) return;
-      setLoading(true);
-
-      try {
-        let allLogs: ActivityLog[] = [];
-        let page = 1;
-        const limit = 100;
-        let totalPages = 1;
-
-        do {
-          const params = new URLSearchParams();
-          params.append("page", page.toString());
-          params.append("limit", limit.toString());
-          params.append("role", userDetails.Role);
-
-          if (
-            userDetails.Role !== "SuperAdmin" &&
-            userDetails.Role !== "Human Resources"
-          ) {
-            params.append("referenceID", userDetails.ReferenceID);
-          }
-
-          if (dateCreatedFilterRange?.from) {
-            params.append("startDate", dateCreatedFilterRange.from.toISOString());
-            params.append(
-              "endDate",
-              (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString()
-=======
             setPosts((prev) =>
-                prev.map((p) => (p._id === editingPost._id ? { ...p, Remarks: remarksInput } : p))
->>>>>>> 75fe35959c0c87538b9ee4dec523a7644705e70d
+                prev.map((p) =>
+                    p._id === editingPost._id
+                        ? { ...p, Remarks: remarksInput }
+                        : p,
+                ),
             );
 
             toast.success("Activity log updated successfully");
@@ -377,22 +431,16 @@ export default function Page() {
             // Here you could do actual search or API fetch
         }, 1000); // 1 second debounce
 
-<<<<<<< HEAD
-        setPosts(allLogs);
-      } catch (err) {
-        toast.error("Error fetching activity logs.");
-        setPosts([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-=======
         return () => clearTimeout(timeout);
     }, [searchQuery]);
->>>>>>> 75fe35959c0c87538b9ee4dec523a7644705e70d
 
     async function handleExport() {
-        if (!(userDetails.Role === "SuperAdmin" || userDetails.Department === "Human Resources")) {
+        if (
+            !(
+                userDetails.Role === "SuperAdmin" ||
+                userDetails.Department === "Human Resources"
+            )
+        ) {
             toast.error("You do not have permission to export data.");
             return;
         }
@@ -437,11 +485,13 @@ export default function Page() {
 
             // Save file using file-saver
             const blob = new Blob([buffer], {
-                type:
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             });
 
-            saveAs(blob, `ActivityLogs_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            saveAs(
+                blob,
+                `ActivityLogs_${new Date().toISOString().slice(0, 10)}.xlsx`,
+            );
 
             toast.success("Export successful!");
         } catch (error) {
@@ -459,12 +509,6 @@ export default function Page() {
         setPhotoDialogOpen(true);
     }
 
-<<<<<<< HEAD
-        setUsersMap(map);
-      } catch (err) {
-      }
-    };
-=======
     return (
         <ProtectedPageWrapper>
             <UserProvider>
@@ -473,21 +517,27 @@ export default function Page() {
                         <AppSidebar
                             userId={userId ?? undefined}
                             dateCreatedFilterRange={dateCreatedFilterRange}
-                            setDateCreatedFilterRangeAction={setDateCreatedFilterRange}
+                            setDateCreatedFilterRangeAction={
+                                setDateCreatedFilterRange
+                            }
                         />
                         <SidebarInset>
                             <header className="bg-background sticky top-0 flex h-16 shrink-0 items-center gap-2 border-b px-4">
                                 <SidebarTrigger className="-ml-1" />
-                                <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+                                <Separator
+                                    orientation="vertical"
+                                    className="mr-2 data-[orientation=vertical]:h-4"
+                                />
                                 <Breadcrumb>
                                     <BreadcrumbList>
                                         <BreadcrumbItem>
-                                            <BreadcrumbPage>Activity Logs</BreadcrumbPage>
+                                            <BreadcrumbPage>
+                                                Activity Logs
+                                            </BreadcrumbPage>
                                         </BreadcrumbItem>
                                     </BreadcrumbList>
                                 </Breadcrumb>
                             </header>
->>>>>>> 75fe35959c0c87538b9ee4dec523a7644705e70d
 
                             <div className="flex flex-1 flex-col gap-4 p-4">
                                 <div className="flex items-center w-full max-w-md gap-2">
@@ -502,7 +552,9 @@ export default function Page() {
                                             type="text"
                                             placeholder="Search by type, status, email, reference..."
                                             value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            onChange={(e) =>
+                                                setSearchQuery(e.target.value)
+                                            }
                                             className="pl-10 pr-10 rounded-md w-full text-xs"
                                         />
 
@@ -514,27 +566,38 @@ export default function Page() {
                                     </div>
 
                                     {/* Export button aligned right */}
-                                    {(userDetails.Role === "SuperAdmin" || userDetails.Department === "Human Resources") && (
-                                        <Button onClick={handleExport} className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-[#d11a2a] transition-all shadow-lg shadow-gray-200">
-                                            <DownloadCloud size={18} />  Export Data
+                                    {(userDetails.Role === "SuperAdmin" ||
+                                        userDetails.Department ===
+                                            "Human Resources") && (
+                                        <Button
+                                            onClick={handleExport}
+                                            className="bg-black text-white px-8 py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-[#d11a2a] transition-all shadow-lg shadow-gray-200"
+                                        >
+                                            <DownloadCloud size={18} /> Export
+                                            Data
                                         </Button>
                                     )}
                                 </div>
 
-
                                 <div className="w-full overflow-x-auto">
                                     {paginatedAccounts.map((post) => {
                                         const user = usersMap[post.ReferenceID];
-                                        const createdDate = new Date(post.date_created);
-                                        const formattedDate = createdDate.toLocaleDateString();
-                                        const formattedTime = createdDate.toLocaleTimeString([], {
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                        });
+                                        const createdDate = new Date(
+                                            post.date_created,
+                                        );
+                                        const formattedDate =
+                                            createdDate.toLocaleDateString();
+                                        const formattedTime =
+                                            createdDate.toLocaleTimeString([], {
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                            });
 
                                         return (
                                             <Item
-                                                key={post._id || post.ReferenceID}
+                                                key={
+                                                    post._id || post.ReferenceID
+                                                }
                                                 variant="outline"
                                                 className="mb-4"
                                             >
@@ -543,7 +606,9 @@ export default function Page() {
                                                         {/* Photo */}
                                                         {post.PhotoURL ? (
                                                             <img
-                                                                src={post.PhotoURL}
+                                                                src={
+                                                                    post.PhotoURL
+                                                                }
                                                                 alt="Photo"
                                                                 className="h-20 w-20 rounded-md object-cover"
                                                             />
@@ -556,18 +621,51 @@ export default function Page() {
                                                         {/* User Name and ReferenceID */}
                                                         <div>
                                                             <div className="font-semibold">
-                                                                {user ? `${user.Firstname} ${user.Lastname}` : "Unknown User"}
+                                                                {user
+                                                                    ? `${user.Firstname} ${user.Lastname}`
+                                                                    : "Unknown User"}
                                                             </div>
-                                                            <div className="text-[10px] text-gray-500">{post.ReferenceID}</div>
-                                                            <div className="text-[10px] text-gray-500"><strong>Type:</strong> {post.Type}</div>
                                                             <div className="text-[10px] text-gray-500">
-                                                                <strong>Status:</strong>{" "}
-                                                                <Badge variant="outline" className="text-[8px]" color={statusColor(post.Status)}>
-                                                                    {post.Status}
+                                                                {
+                                                                    post.ReferenceID
+                                                                }
+                                                            </div>
+                                                            <div className="text-[10px] text-gray-500">
+                                                                <strong>
+                                                                    Type:
+                                                                </strong>{" "}
+                                                                {post.Type}
+                                                            </div>
+                                                            <div className="text-[10px] text-gray-500">
+                                                                <strong>
+                                                                    Status:
+                                                                </strong>{" "}
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className="text-[8px]"
+                                                                    color={statusColor(
+                                                                        post.Status,
+                                                                    )}
+                                                                >
+                                                                    {
+                                                                        post.Status
+                                                                    }
                                                                 </Badge>
                                                             </div>
-                                                            <div className="text-[10px] text-gray-500"><strong>Date:</strong> {formattedDate} {formattedTime}</div>
-                                                            <div className="text-[10px] text-gray-500"><strong>Location:</strong> {post.Location || "N/A"}</div>
+                                                            <div className="text-[10px] text-gray-500">
+                                                                <strong>
+                                                                    Date:
+                                                                </strong>{" "}
+                                                                {formattedDate}{" "}
+                                                                {formattedTime}
+                                                            </div>
+                                                            <div className="text-[10px] text-gray-500">
+                                                                <strong>
+                                                                    Location:
+                                                                </strong>{" "}
+                                                                {post.Location ||
+                                                                    "N/A"}
+                                                            </div>
                                                         </div>
                                                     </ItemTitle>
                                                 </ItemContent>
@@ -577,7 +675,9 @@ export default function Page() {
                                                         size="sm"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            openEditDialog(post);
+                                                            openEditDialog(
+                                                                post,
+                                                            );
                                                         }}
                                                     >
                                                         Edit
@@ -589,7 +689,9 @@ export default function Page() {
                                                             variant="outline"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                openPhotoDialog(post);
+                                                                openPhotoDialog(
+                                                                    post,
+                                                                );
                                                             }}
                                                         >
                                                             View Photo
@@ -609,10 +711,17 @@ export default function Page() {
                                                     href="#"
                                                     onClick={(e) => {
                                                         e.preventDefault();
-                                                        if (currentPage === 1) return;
-                                                        setCurrentPage((p) => Math.max(p - 1, 1));
+                                                        if (currentPage === 1)
+                                                            return;
+                                                        setCurrentPage((p) =>
+                                                            Math.max(p - 1, 1),
+                                                        );
                                                     }}
-                                                    className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                                                    className={
+                                                        currentPage === 1
+                                                            ? "pointer-events-none opacity-50"
+                                                            : ""
+                                                    }
                                                 />
                                             </PaginationItem>
 
@@ -623,8 +732,16 @@ export default function Page() {
                                                         e.preventDefault();
                                                         setCurrentPage(1);
                                                     }}
-                                                    aria-current={currentPage === 1 ? "page" : undefined}
-                                                    className={currentPage === 1 ? "font-bold underline" : ""}
+                                                    aria-current={
+                                                        currentPage === 1
+                                                            ? "page"
+                                                            : undefined
+                                                    }
+                                                    className={
+                                                        currentPage === 1
+                                                            ? "font-bold underline"
+                                                            : ""
+                                                    }
                                                 >
                                                     1
                                                 </PaginationLink>
@@ -637,20 +754,44 @@ export default function Page() {
                                             )}
 
                                             {Array.from(
-                                                { length: Math.min(pageCount - 2, 3) },
-                                                (_, i) => i + Math.max(2, currentPage - 1)
+                                                {
+                                                    length: Math.min(
+                                                        pageCount - 2,
+                                                        3,
+                                                    ),
+                                                },
+                                                (_, i) =>
+                                                    i +
+                                                    Math.max(
+                                                        2,
+                                                        currentPage - 1,
+                                                    ),
                                             )
-                                                .filter((page) => page < pageCount)
+                                                .filter(
+                                                    (page) => page < pageCount,
+                                                )
                                                 .map((page) => (
                                                     <PaginationItem key={page}>
                                                         <PaginationLink
                                                             href="#"
                                                             onClick={(e) => {
                                                                 e.preventDefault();
-                                                                setCurrentPage(page);
+                                                                setCurrentPage(
+                                                                    page,
+                                                                );
                                                             }}
-                                                            aria-current={currentPage === page ? "page" : undefined}
-                                                            className={currentPage === page ? "font-bold underline" : ""}
+                                                            aria-current={
+                                                                currentPage ===
+                                                                page
+                                                                    ? "page"
+                                                                    : undefined
+                                                            }
+                                                            className={
+                                                                currentPage ===
+                                                                page
+                                                                    ? "font-bold underline"
+                                                                    : ""
+                                                            }
                                                         >
                                                             {page}
                                                         </PaginationLink>
@@ -669,10 +810,22 @@ export default function Page() {
                                                         href="#"
                                                         onClick={(e) => {
                                                             e.preventDefault();
-                                                            setCurrentPage(pageCount);
+                                                            setCurrentPage(
+                                                                pageCount,
+                                                            );
                                                         }}
-                                                        aria-current={currentPage === pageCount ? "page" : undefined}
-                                                        className={currentPage === pageCount ? "font-bold underline" : ""}
+                                                        aria-current={
+                                                            currentPage ===
+                                                            pageCount
+                                                                ? "page"
+                                                                : undefined
+                                                        }
+                                                        className={
+                                                            currentPage ===
+                                                            pageCount
+                                                                ? "font-bold underline"
+                                                                : ""
+                                                        }
                                                     >
                                                         {pageCount}
                                                     </PaginationLink>
@@ -684,10 +837,24 @@ export default function Page() {
                                                     href="#"
                                                     onClick={(e) => {
                                                         e.preventDefault();
-                                                        if (currentPage === pageCount) return;
-                                                        setCurrentPage((p) => Math.min(p + 1, pageCount));
+                                                        if (
+                                                            currentPage ===
+                                                            pageCount
+                                                        )
+                                                            return;
+                                                        setCurrentPage((p) =>
+                                                            Math.min(
+                                                                p + 1,
+                                                                pageCount,
+                                                            ),
+                                                        );
                                                     }}
-                                                    className={currentPage === pageCount ? "pointer-events-none opacity-50" : ""}
+                                                    className={
+                                                        currentPage ===
+                                                        pageCount
+                                                            ? "pointer-events-none opacity-50"
+                                                            : ""
+                                                    }
                                                 />
                                             </PaginationItem>
                                         </PaginationContent>
@@ -695,22 +862,37 @@ export default function Page() {
                                 )}
 
                                 {/* Edit Dialog */}
-                                <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+                                <Dialog
+                                    open={editDialogOpen}
+                                    onOpenChange={setEditDialogOpen}
+                                >
                                     <DialogContent>
                                         <DialogHeader>
-                                            <DialogTitle>Edit Remarks</DialogTitle>
+                                            <DialogTitle>
+                                                Edit Remarks
+                                            </DialogTitle>
                                         </DialogHeader>
                                         <textarea
                                             className="w-full rounded border p-2"
                                             rows={5}
                                             value={remarksInput}
-                                            onChange={(e) => setRemarksInput(e.target.value)}
+                                            onChange={(e) =>
+                                                setRemarksInput(e.target.value)
+                                            }
                                         />
                                         <DialogFooter className="flex justify-end gap-2">
-                                            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                                            <Button
+                                                variant="outline"
+                                                onClick={() =>
+                                                    setEditDialogOpen(false)
+                                                }
+                                            >
                                                 Cancel
                                             </Button>
-                                            <Button onClick={saveUpdate} disabled={loading}>
+                                            <Button
+                                                onClick={saveUpdate}
+                                                disabled={loading}
+                                            >
                                                 {loading ? "Saving..." : "Save"}
                                             </Button>
                                         </DialogFooter>
@@ -719,10 +901,15 @@ export default function Page() {
 
                                 {/* Photo Dialog */}
                                 {/* Photo Dialog */}
-                                <Dialog open={photoDialogOpen} onOpenChange={setPhotoDialogOpen}>
+                                <Dialog
+                                    open={photoDialogOpen}
+                                    onOpenChange={setPhotoDialogOpen}
+                                >
                                     <DialogContent className="max-w-sm">
                                         <DialogHeader>
-                                            <DialogTitle>Photo Viewer</DialogTitle>
+                                            <DialogTitle>
+                                                Photo Viewer
+                                            </DialogTitle>
                                         </DialogHeader>
 
                                         {selectedPhoto?.url ? (
@@ -733,15 +920,26 @@ export default function Page() {
                                                     className="w-full rounded-md object-contain"
                                                 />
                                                 <div className="text-sm text-white bg-black p-2 rounded">
-                                                    Date: {new Date(selectedPhoto.date || "").toLocaleString()}
+                                                    Date:{" "}
+                                                    {new Date(
+                                                        selectedPhoto.date ||
+                                                            "",
+                                                    ).toLocaleString()}
                                                 </div>
                                             </div>
                                         ) : (
-                                            <p className="text-sm text-gray-500">No photo available.</p>
+                                            <p className="text-sm text-gray-500">
+                                                No photo available.
+                                            </p>
                                         )}
 
                                         <DialogFooter className="flex justify-end mt-4 gap-2">
-                                            <Button variant="outline" onClick={() => setPhotoDialogOpen(false)}>
+                                            <Button
+                                                variant="outline"
+                                                onClick={() =>
+                                                    setPhotoDialogOpen(false)
+                                                }
+                                            >
                                                 Close
                                             </Button>
 
@@ -749,28 +947,44 @@ export default function Page() {
                                                 <Button
                                                     onClick={async () => {
                                                         try {
-                                                            const res = await fetch(selectedPhoto.url!);
-                                                            const blob = await res.blob();
-                                                            const url = window.URL.createObjectURL(blob);
-                                                            const a = document.createElement("a");
+                                                            const res =
+                                                                await fetch(
+                                                                    selectedPhoto.url!,
+                                                                );
+                                                            const blob =
+                                                                await res.blob();
+                                                            const url =
+                                                                window.URL.createObjectURL(
+                                                                    blob,
+                                                                );
+                                                            const a =
+                                                                document.createElement(
+                                                                    "a",
+                                                                );
                                                             a.href = url;
                                                             a.download = `ActivityPhoto_${new Date(selectedPhoto.date || "").toISOString()}.jpg`;
-                                                            document.body.appendChild(a);
+                                                            document.body.appendChild(
+                                                                a,
+                                                            );
                                                             a.click();
                                                             a.remove();
-                                                            window.URL.revokeObjectURL(url);
+                                                            window.URL.revokeObjectURL(
+                                                                url,
+                                                            );
                                                         } catch (err) {
-                                                            toast.error("Failed to download photo.");
+                                                            toast.error(
+                                                                "Failed to download photo.",
+                                                            );
                                                         }
                                                     }}
                                                 >
-                                                    <DownloadCloud /> Download Photo
+                                                    <DownloadCloud /> Download
+                                                    Photo
                                                 </Button>
                                             )}
                                         </DialogFooter>
                                     </DialogContent>
                                 </Dialog>
-
                             </div>
                         </SidebarInset>
                     </SidebarProvider>
