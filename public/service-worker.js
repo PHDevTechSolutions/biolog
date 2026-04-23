@@ -1,7 +1,7 @@
 // public/service-worker.js
-// Acculog PWA — Service Worker v6
+// Acculog PWA — Service Worker v7
 
-const CACHE_NAME     = "acculog-cache-v6";   // bump version → forces re-install
+const CACHE_NAME     = "acculog-cache-v7";   // bump version → forces re-install
 const OSM_CACHE_NAME = "acculog-osm-tiles-v1";
 const SYNC_TAG       = "sync-activity-logs";
 
@@ -11,6 +11,13 @@ const STATIC_ASSETS = [
   "/",
   "/activity-planner",
   "/Login",
+  "/dashboard",
+  "/gps-report",
+  "/time-attendance/timesheet",
+  "/time-attendance/activity",
+  "/time-attendance/location",
+  "/profile",
+  "/ticket",
   "/manifest.json",
   "/fluxx.png",
   "/fluxx-512.png",
@@ -26,11 +33,13 @@ const CACHEABLE_API_PATTERNS = [
   /\/api\/ModuleSales\/Activity\/LastStatus/,
   /\/api\/ModuleSales\/Activity\/LoginSummary/,
   /\/api\/ModuleSales\/Activity\/SiteVisitCountToday/,
+  /\/api\/ModuleSales\/Activity\/Meeting/,
   /\/api\/users/,
   /\/api\/user/,
   /\/api\/fetch-account/,
   /\/api\/fetch-tsm/,
   /\/api\/fetch-manager/,
+  /\/api\/admin\/settings/,
 ];
 
 // OSM tile hosts

@@ -20,7 +20,7 @@ import {
   MapPinCheck, Building2, Home, BarChart3, User,
   LogIn, LogOut, TrendingUp, Plus, FileSpreadsheet, CalendarIcon, Clock, Megaphone,
   ChevronRight as ArrowRight, Power, Cloud, Sun, CloudRain, CloudLightning, Wind, Info, Fingerprint,
-  Smartphone, Laptop, Globe, ShieldCheck, Trash2, Settings, Users, Search, MoreVertical, Edit2, ShieldAlert, History
+  Smartphone, Laptop, Globe, ShieldCheck, Trash2, Settings, Users, Search, MoreVertical, Edit2, ShieldAlert, History, Download
 } from "lucide-react";
 
 import { useOfflineSync } from "@/hooks/useOfflineSync";
@@ -970,6 +970,54 @@ function ProfileTab({
   const [emailUpdating, setEmailUpdating] = useState(false);
   const [pinUpdating, setPinUpdating] = useState(false);
 
+  // PWA Install Prompt
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  // Capture the beforeinstallprompt event
+  useEffect(() => {
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      toast.success('App installed successfully!');
+    }
+    
+    setDeferredPrompt(null);
+    setIsInstallable(false);
+  };
+
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
     try {
@@ -1271,6 +1319,38 @@ function ProfileTab({
             </div>
           </button>
 
+          {/* Install App Button - Only show if installable and not installed */}
+          {isInstallable && !isInstalled && (
+            <button
+              onClick={handleInstallClick}
+              className="w-full flex items-center gap-4 bg-gradient-to-r from-purple-600 to-purple-500 rounded-2xl border border-purple-400 px-4 py-4 text-left hover:from-purple-700 hover:to-purple-600 active:scale-[0.98] transition-all group shadow-lg shadow-purple-200"
+            >
+              <div className="w-11 h-11 rounded-[14px] bg-white/20 flex items-center justify-center flex-shrink-0 group-hover:bg-white/30 transition-colors">
+                <Download size={20} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-white">Install App</p>
+                <p className="text-[11px] text-white/80 mt-0.5">Add to home screen for offline access</p>
+              </div>
+              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0 group-hover:bg-white/30 transition-colors">
+                <ArrowRight size={13} className="text-white" />
+              </div>
+            </button>
+          )}
+
+          {/* Already Installed Badge */}
+          {isInstalled && (
+            <div className="w-full flex items-center gap-4 bg-green-50 rounded-2xl border border-green-200 px-4 py-4">
+              <div className="w-11 h-11 rounded-[14px] bg-green-100 flex items-center justify-center flex-shrink-0">
+                <Download size={20} className="text-green-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-green-800">App Installed</p>
+                <p className="text-[11px] text-green-600 mt-0.5">You're using the installed app</p>
+              </div>
+            </div>
+          )}
+
           <TimesheetNavCard userId={userId} />
         </div>
 
@@ -1393,7 +1473,16 @@ function ActivityPage() {
   const today = new Date();
 
   // ── Logout ── matches nav-user.tsx logic exactly
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Clear offline session so the user can't bypass login while offline
+    try {
+      const { clearOfflineSession } = await import("@/lib/offline-auth");
+      await clearOfflineSession();
+    } catch { /* silent */ }
+    // Attempt server-side logout (best-effort — works online only)
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch { /* silent — offline */ }
     localStorage.removeItem("userId");
     router.replace("/Login");
   };

@@ -4,11 +4,13 @@
 // and load their profile while disconnected.
 
 const DB_NAME      = "acculog-auth";
-const DB_VERSION   = 1;
+const DB_VERSION   = 2;          // bumped: added session store
 const AUTH_STORE   = "credentials";
 const USER_STORE   = "users";
+const SESSION_STORE = "session"; // offline session (single record)
 
-const CRED_TTL_MS  = 1000 * 60 * 60 * 24 * 30; // 30 days
+const CRED_TTL_MS    = 1000 * 60 * 60 * 24 * 30; // 30 days
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;  // 7 days
 
 export interface CachedCredential {
   key: string;            // primary key: lowercased email
@@ -25,6 +27,12 @@ export interface CachedUser {
   cachedAt: number;
 }
 
+export interface OfflineSession {
+  id: "current";          // single-record store
+  userId: string;
+  cachedAt: number;
+}
+
 // ── IndexedDB helpers ────────────────────────────────────────────────────────
 
 function openDB(): Promise<IDBDatabase> {
@@ -34,13 +42,16 @@ function openDB(): Promise<IDBDatabase> {
       return;
     }
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
       if (!db.objectStoreNames.contains(AUTH_STORE)) {
         db.createObjectStore(AUTH_STORE, { keyPath: "key" });
       }
       if (!db.objectStoreNames.contains(USER_STORE)) {
         db.createObjectStore(USER_STORE, { keyPath: "userId" });
+      }
+      if (!db.objectStoreNames.contains(SESSION_STORE)) {
+        db.createObjectStore(SESSION_STORE, { keyPath: "id" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -157,5 +168,64 @@ export async function getCachedUser(userId: string): Promise<Record<string, unkn
     });
   } catch {
     return null;
+  }
+}
+
+// ── Offline Session Management ───────────────────────────────────────────────
+
+/** Store the current offline session (userId) */
+export async function setOfflineSession(userId: string): Promise<void> {
+  try {
+    const db = await openDB();
+    const entry: OfflineSession = { id: "current", userId, cachedAt: Date.now() };
+    await new Promise<void>((resolve, reject) => {
+      const tx    = db.transaction(SESSION_STORE, "readwrite");
+      const store = tx.objectStore(SESSION_STORE);
+      const req   = store.put(entry);
+      req.onsuccess = () => resolve();
+      req.onerror   = () => reject(req.error);
+      tx.oncomplete = () => db.close();
+    });
+  } catch {
+    // Storage unavailable — fail silently
+  }
+}
+
+/** Get the current offline session (returns userId if valid) */
+export async function getOfflineSession(): Promise<string | null> {
+  try {
+    const db = await openDB();
+    const session = await new Promise<OfflineSession | undefined>((resolve, reject) => {
+      const tx    = db.transaction(SESSION_STORE, "readonly");
+      const store = tx.objectStore(SESSION_STORE);
+      const req   = store.get("current");
+      req.onsuccess = () => resolve(req.result as OfflineSession | undefined);
+      req.onerror   = () => reject(req.error);
+      tx.oncomplete = () => db.close();
+    });
+
+    if (!session) return null;
+    if (Date.now() - session.cachedAt > SESSION_TTL_MS) return null;
+
+    return session.userId;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear the offline session (logout) */
+export async function clearOfflineSession(): Promise<void> {
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx    = db.transaction(SESSION_STORE, "readwrite");
+      const store = tx.objectStore(SESSION_STORE);
+      const req   = store.delete("current");
+      req.onsuccess = () => resolve();
+      req.onerror   = () => reject(req.error);
+      tx.oncomplete = () => db.close();
+    });
+  } catch {
+    // ignore
   }
 }

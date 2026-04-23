@@ -423,6 +423,11 @@ export function LoginForm({
           isPinLogin,
         });
         if (offlineResult) {
+          // Persist offline session so protected pages stay accessible
+          try {
+            const { setOfflineSession } = await import("@/lib/offline-auth");
+            await setOfflineSession(offlineResult.userId);
+          } catch { /* silent */ }
           toast.success("Offline login — using cached credentials.");
           setTimeout(() => {
             router.push(`/activity-planner?id=${encodeURIComponent(offlineResult.userId)}`);
@@ -456,13 +461,14 @@ export function LoginForm({
         if (response.ok && result.userId) {
           // Cache credentials so this device can log in offline next time.
           try {
-            const { cacheCredential } = await import("@/lib/offline-auth");
+            const { cacheCredential, setOfflineSession } = await import("@/lib/offline-auth");
             await cacheCredential({
               email:      loginEmail,
               secret:     loginSecret,
               isPinLogin,
               userId:     result.userId,
             });
+            await setOfflineSession(result.userId);
           } catch { /* silent */ }
 
           toast.success("Login successful!");
@@ -482,6 +488,11 @@ export function LoginForm({
             isPinLogin,
           });
           if (offlineResult) {
+            // Persist offline session so protected pages stay accessible
+            try {
+              const { setOfflineSession } = await import("@/lib/offline-auth");
+              await setOfflineSession(offlineResult.userId);
+            } catch { /* silent */ }
             toast.success("Offline login — using cached credentials.");
             setTimeout(() => {
               router.push(`/activity-planner?id=${encodeURIComponent(offlineResult.userId)}`);
@@ -514,6 +525,11 @@ export function LoginForm({
       });
       const result = await response.json();
       if (response.ok && result.userId) {
+        // Store offline session for protected page access
+        try {
+          const { setOfflineSession } = await import("@/lib/offline-auth");
+          await setOfflineSession(result.userId);
+        } catch { /* silent */ }
         toast.success("Biometric login successful!");
         setTimeout(() => {
           router.push(`/activity-planner?id=${encodeURIComponent(result.userId)}`);
