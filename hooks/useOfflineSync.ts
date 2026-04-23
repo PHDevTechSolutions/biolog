@@ -17,7 +17,6 @@ export function useOfflineSync(onSyncComplete?: () => void) {
   const syncingRef = useRef(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Keep callback in a ref to avoid triggering re-syncs if it's unstable
   const onSyncCompleteRef = useRef(onSyncComplete);
   useEffect(() => {
     onSyncCompleteRef.current = onSyncComplete;
@@ -51,6 +50,7 @@ export function useOfflineSync(onSyncComplete?: () => void) {
     try {
       logs = await getAllPendingLogs();
     } catch {
+      // Always release the lock — even if reading the queue fails
       syncingRef.current = false;
       setIsSyncing(false);
       return;
@@ -68,25 +68,27 @@ export function useOfflineSync(onSyncComplete?: () => void) {
     for (const log of logs) {
       // Permanently discard logs that have failed too many times
       if (log.retries >= MAX_RETRIES) {
-        await removePendingLog(log.id);
+        await removePendingLog(log.id).catch(() => {});
         continue;
       }
 
       try {
-        // ① If the PhotoURL is still a base64 string, upload it to Cloudinary first
         const payload = { ...log.payload } as any;
-        if (payload.PhotoURL && payload.PhotoURL.startsWith("data:image/")) {
+
+        // ① Upload base64 photo to Cloudinary if not yet uploaded
+        if (payload.PhotoURL && typeof payload.PhotoURL === "string" && payload.PhotoURL.startsWith("data:image/")) {
           try {
             const uploadedUrl = await uploadToCloudinary(payload.PhotoURL);
             payload.PhotoURL = uploadedUrl;
           } catch {
-            await incrementRetry(log.id);
+            // Cloudinary upload failed — increment retry and skip
+            await incrementRetry(log.id).catch(() => {});
             failCount++;
-            continue; // Skip this log for now; try again next sync
+            continue;
           }
         }
 
-        // ② Send the updated payload to our local API
+        // ② Submit to the API
         const res = await fetch("/api/ModuleSales/Activity/AddLog", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
@@ -94,19 +96,21 @@ export function useOfflineSync(onSyncComplete?: () => void) {
         });
 
         if (res.ok || res.status === 409) {
-          // 409 = duplicate already saved on server — safe to remove
-          await removePendingLog(log.id);
+          // 409 = duplicate already on server — safe to remove
+          await removePendingLog(log.id).catch(() => {});
           successCount++;
         } else {
-          await incrementRetry(log.id);
+          await incrementRetry(log.id).catch(() => {});
           failCount++;
         }
       } catch {
-        await incrementRetry(log.id);
+        // Network error mid-loop — increment retry, keep going
+        await incrementRetry(log.id).catch(() => {});
         failCount++;
       }
     }
 
+    // Always release the lock
     syncingRef.current = false;
     setIsSyncing(false);
     await refreshCount();
@@ -120,28 +124,25 @@ export function useOfflineSync(onSyncComplete?: () => void) {
 
     if (failCount > 0) {
       toast.error(
-        `${failCount} log${failCount > 1 ? "s" : ""} failed to sync. Will retry later.`
+        `${failCount} log${failCount > 1 ? "s" : ""} failed to sync. Will retry when online.`
       );
     }
-  }, [refreshCount]); // No longer depends on onSyncComplete
+  }, [refreshCount]);
 
   // ── Event listeners ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    // Populate count immediately on mount
     refreshCount();
 
     const handleOnline  = () => { setIsOnline(true);  syncNow(); };
     const handleOffline = () => setIsOnline(false);
-
-    // Fired by ServiceWorkerRegister when SW posts SW_SYNC_TRIGGER
     const handleSWSync  = () => syncNow();
 
-    window.addEventListener("online",          handleOnline);
-    window.addEventListener("offline",         handleOffline);
-    window.addEventListener("acculog:sync",    handleSWSync);
+    window.addEventListener("online",       handleOnline);
+    window.addEventListener("offline",      handleOffline);
+    window.addEventListener("acculog:sync", handleSWSync);
 
-    // Attempt sync on first render if already online
+    // Attempt sync on mount if already online
     if (navigator.onLine) syncNow();
 
     return () => {

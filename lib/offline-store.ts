@@ -16,6 +16,10 @@ export interface PendingLog {
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("IndexedDB unavailable"));
+      return;
+    }
     const req = indexedDB.open(DB_NAME, DB_VERSION);
 
     req.onupgradeneeded = () => {
@@ -45,9 +49,9 @@ export async function enqueuePendingLog(
     const store = tx.objectStore(STORE_NAME);
     const req   = store.add(entry);
 
-    req.onsuccess    = () => resolve(id);
-    req.onerror      = () => reject(req.error);
-    tx.oncomplete    = () => db.close();
+    tx.oncomplete = () => { db.close(); resolve(id); };
+    tx.onerror    = () => { db.close(); reject(tx.error); };
+    req.onerror   = () => reject(req.error);
   });
 }
 
@@ -60,13 +64,13 @@ export async function getAllPendingLogs(): Promise<PendingLog[]> {
     const store = tx.objectStore(STORE_NAME);
     const req   = store.getAll();
 
+    tx.oncomplete = () => db.close();
     req.onsuccess = () => {
       resolve(
         (req.result as PendingLog[]).sort((a, b) => a.createdAt - b.createdAt)
       );
-      db.close();
     };
-    req.onerror = () => reject(req.error);
+    req.onerror = () => { db.close(); reject(req.error); };
   });
 }
 
@@ -79,9 +83,9 @@ export async function removePendingLog(id: string): Promise<void> {
     const store = tx.objectStore(STORE_NAME);
     const req   = store.delete(id);
 
-    req.onsuccess = () => resolve();
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror    = () => { db.close(); reject(tx.error); };
     req.onerror   = () => reject(req.error);
-    tx.oncomplete = () => db.close();
   });
 }
 
@@ -98,12 +102,13 @@ export async function incrementRetry(id: string): Promise<void> {
       const entry = getReq.result as PendingLog | undefined;
       if (!entry) { resolve(); return; }
       entry.retries += 1;
-      store.put(entry);
-      resolve();
+      const putReq = store.put(entry);
+      putReq.onerror = () => reject(putReq.error);
     };
 
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror    = () => { db.close(); reject(tx.error); };
     getReq.onerror = () => reject(getReq.error);
-    tx.oncomplete  = () => db.close();
   });
 }
 
@@ -116,7 +121,8 @@ export async function getPendingCount(): Promise<number> {
     const store = tx.objectStore(STORE_NAME);
     const req   = store.count();
 
-    req.onsuccess = () => { resolve(req.result); db.close(); };
-    req.onerror   = () => reject(req.error);
+    tx.oncomplete = () => db.close();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = () => { db.close(); reject(req.error); };
   });
 }

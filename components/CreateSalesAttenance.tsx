@@ -235,92 +235,73 @@ export default function CreateSalesAttendance({
     if (locationAddress === "Fetching location...") return toast.error("Location not ready yet.");
 
     setLoading(true);
-    const isOnline = navigator.onLine;
+
+    const basePayload = {
+      ...formData,
+      Type: "Client Visit",
+      Location:  locationAddress,
+      Latitude:  manualLat ?? latitude,
+      Longitude: manualLng ?? longitude,
+      FaceData:  faceData,
+    };
+
+    const resetForm = () => {
+      fetchAccountAction();
+      setFormAction({
+        ReferenceID: userDetails.ReferenceID,
+        Email: userDetails.Email,
+        TSM: userDetails.TSM,
+        Type: "Client Visit",
+        Status: "",
+        PhotoURL: "",
+        Remarks: "",
+        SiteVisitAccount: "",
+      });
+      setCapturedImage(null);
+      onOpenChangeAction(false);
+    };
 
     try {
-      let photoURL = capturedImage;
+      if (!navigator.onLine) {
+        // ── Offline: queue with base64 photo ──────────────────────────────
+        await enqueuePendingLog({ ...basePayload, PhotoURL: capturedImage });
+        toast.success("Saved offline — will sync when you're back online.");
+        resetForm();
+        return;
+      }
 
-      if (!isOnline) {
-        // Queue for later sync with base64 image
-        const payload = {
-          ...formData,
-          Type: "Client Visit",
-          PhotoURL: photoURL,
-          Location: locationAddress,
-          Latitude: manualLat ?? latitude,
-          Longitude: manualLng ?? longitude,
-          FaceData: faceData,
-        };
-        await enqueuePendingLog(payload);
-        toast.success("Saved offline. Will sync when connection is restored.");
-        onOpenChangeAction(false);
-        setFormAction({
-          ReferenceID: userDetails.ReferenceID,
-          Email: userDetails.Email,
-          TSM: userDetails.TSM,
-          Type: "Client Visit",
-          Status: "",
-          PhotoURL: "",
-          Remarks: "",
-          SiteVisitAccount: "",
-        });
-        setCapturedImage(null);
-      } else {
-        // Online: upload and submit immediately
+      // ── Online: upload photo first ─────────────────────────────────────
+      let photoURL: string;
+      try {
         photoURL = await uploadToCloudinary(capturedImage!);
-        const payload = {
-          ...formData,
-          Type: "Client Visit",
-          PhotoURL: photoURL,
-          Location: locationAddress,
-          Latitude: manualLat ?? latitude,
-          Longitude: manualLng ?? longitude,
-          FaceData: faceData,
-        };
-        const resetForm = () => {
-          fetchAccountAction();
-          setFormAction({
-            ReferenceID: userDetails.ReferenceID,
-            Email: userDetails.Email,
-            TSM: userDetails.TSM,
-            Type: "Client Visit",
-            Status: "",
-            PhotoURL: "",
-            Remarks: "",
-            SiteVisitAccount: "",
-          });
-          setCapturedImage(null);
-          onOpenChangeAction(false);
-        };
+      } catch {
+        // Upload failed — queue with base64 for later
+        await enqueuePendingLog({ ...basePayload, PhotoURL: capturedImage });
+        toast.success("Photo upload failed — saved offline. Will sync when connection improves.");
+        resetForm();
+        return;
+      }
 
-        const submitOffline = async () => {
-          const { enqueuePendingLog } = await import("@/lib/offline-store");
-          await enqueuePendingLog(payload as any);
-          toast.success("Saved offline. Will sync when connection returns.");
-          resetForm();
-        };
-
-        if (typeof navigator !== "undefined" && !navigator.onLine) {
-          await submitOffline();
-        } else {
-          try {
-            const res = await fetch("/api/ModuleSales/Activity/AddLog", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error("Failed to save attendance");
-            toast.success("Attendance created!");
-            resetForm();
-          } catch {
-            await submitOffline();
-          }
-        }
+      try {
+        const res = await fetch("/api/ModuleSales/Activity/AddLog", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ ...basePayload, PhotoURL: photoURL }),
+        });
+        if (!res.ok) throw new Error("Failed to save attendance");
+        toast.success("Attendance created!");
+        resetForm();
+      } catch {
+        // API failed after upload — queue with Cloudinary URL (no re-upload)
+        await enqueuePendingLog({ ...basePayload, PhotoURL: photoURL });
+        toast.success("Saved offline — will sync when connection returns.");
+        resetForm();
       }
     } catch (err: any) {
       toast.error(err?.message || "Error saving attendance.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // Determine UI state
@@ -660,18 +641,20 @@ export default function CreateSalesAttendance({
                   ) : isLogout ? (
                     <>
                       <LogOut size={16} />
-                      Logout
+                      {navigator.onLine ? "Logout" : "Save Offline (Logout)"}
                     </>
                   ) : (
                     <>
                       <LogIn size={16} />
-                      Login
+                      {navigator.onLine ? "Login" : "Save Offline (Login)"}
                     </>
                   )}
                 </button>
 
                 <p className="text-center text-[11px] text-gray-300 pb-2">
-                  Submission will be recorded with timestamp & GPS location
+                  {navigator.onLine
+                    ? "Submission will be recorded with timestamp & GPS location"
+                    : "Will sync automatically when you're back online"}
                 </p>
               </>
             )}

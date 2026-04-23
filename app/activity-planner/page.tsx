@@ -974,12 +974,23 @@ function ProfileTab({
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   // Capture the beforeinstallprompt event
   useEffect(() => {
-    // Check if already installed
+    // Check if already installed (standalone mode)
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true);
+      return;
+    }
+
+    // Detect iOS — Safari on iPhone/iPad never fires beforeinstallprompt
+    const ua = navigator.userAgent;
+    const iosDevice = /iphone|ipad|ipod/i.test(ua) && !(window as any).MSStream;
+    if (iosDevice) {
+      setIsIOS(true);
+      setIsInstallable(true); // show the button so user can get instructions
       return;
     }
 
@@ -1005,15 +1016,17 @@ function ProfileTab({
   }, []);
 
   const handleInstallClick = async () => {
+    if (isIOS) {
+      setShowIOSGuide(true);
+      return;
+    }
     if (!deferredPrompt) return;
 
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    
     if (outcome === 'accepted') {
       toast.success('App installed successfully!');
     }
-    
     setDeferredPrompt(null);
     setIsInstallable(false);
   };
@@ -1330,12 +1343,64 @@ function ProfileTab({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold text-white">Install App</p>
-                <p className="text-[11px] text-white/80 mt-0.5">Add to home screen for offline access</p>
+                <p className="text-[11px] text-white/80 mt-0.5">
+                  {isIOS ? "Add to Home Screen (iOS guide)" : "Add to home screen for offline access"}
+                </p>
               </div>
               <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0 group-hover:bg-white/30 transition-colors">
                 <ArrowRight size={13} className="text-white" />
               </div>
             </button>
+          )}
+
+          {/* iOS Step-by-step guide modal */}
+          {showIOSGuide && (
+            <div
+              className="fixed inset-0 z-[200] flex items-end justify-center"
+              style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+              onClick={() => setShowIOSGuide(false)}
+            >
+              <div
+                className="w-full max-w-sm bg-white rounded-t-[32px] p-6 pb-10 shadow-2xl"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="w-10 h-1 rounded-full bg-gray-200 mx-auto mb-5" />
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-11 h-11 rounded-[14px] bg-purple-100 flex items-center justify-center flex-shrink-0">
+                    <Download size={20} className="text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-[15px] font-bold text-gray-900">Install on iPhone / iPad</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Follow these 3 steps in Safari</p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {[
+                    { step: "1", icon: "⬆️", text: "Tap the Share button at the bottom of Safari (the box with an arrow pointing up)" },
+                    { step: "2", icon: "➕", text: 'Scroll down and tap "Add to Home Screen"' },
+                    { step: "3", icon: "✅", text: 'Tap "Add" in the top-right corner — the app icon will appear on your home screen' },
+                  ].map(({ step, icon, text }) => (
+                    <div key={step} className="flex items-start gap-3 bg-gray-50 rounded-2xl p-3.5 border border-gray-100">
+                      <div className="w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold">
+                        {step}
+                      </div>
+                      <p className="text-[12px] text-gray-700 leading-relaxed flex-1">
+                        <span className="mr-1">{icon}</span>{text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400 text-center mt-4">
+                  Make sure you are using <span className="font-bold text-gray-600">Safari</span> — Chrome on iOS does not support installation.
+                </p>
+                <button
+                  onClick={() => setShowIOSGuide(false)}
+                  className="w-full mt-4 py-3.5 bg-purple-600 text-white rounded-2xl font-bold text-[14px] active:scale-95 transition-all"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Already Installed Badge */}

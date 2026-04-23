@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 import { UserProvider } from "@/contexts/UserContext";
-import InstallPrompt from "@/components/install-prompt";
 import ServiceWorkerRegister from "@/components/service-worker-register";
 
 const inter = Inter({
@@ -52,11 +51,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ServiceWorkerRegister />
           {children}
           <Toaster />
-          <div className="fixed inset-0 z-[500] pointer-events-none">
-            <div className="pointer-events-auto">
-              <InstallPrompt />
-            </div>
-          </div>
         </UserProvider>
       </body>
     </html>

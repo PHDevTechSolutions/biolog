@@ -40,6 +40,16 @@ interface CreateAttendanceProps {
   setFormAction: React.Dispatch<React.SetStateAction<FormData>>;
 }
 
+const LOCATION_PENDING = "Fetching location...";
+
+function isLocationReady(addr: string): boolean {
+  return (
+    addr !== LOCATION_PENDING &&
+    !addr.includes("permission denied") &&
+    addr.length > 0
+  );
+}
+
 export default function CreateAttendance({
   open,
   onOpenChangeAction,
@@ -49,7 +59,7 @@ export default function CreateAttendance({
   fetchAccountAction,
   setFormAction,
 }: CreateAttendanceProps) {
-  const [locationAddress, setLocationAddress] = useState("Fetching location...");
+  const [locationAddress, setLocationAddress] = useState(LOCATION_PENDING);
   const [manualLat, setManualLat] = useState<number | null>(null);
   const [manualLng, setManualLng] = useState<number | null>(null);
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -61,72 +71,63 @@ export default function CreateAttendance({
   const [lastTime, setLastTime] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      if (formData.Type !== "On Field") onChangeAction("Type", "On Field");
-      setCapturedImage(null);
-      setLocationAddress("Fetching location...");
-      setManualLat(null);
-      setManualLng(null);
-    }
-  }, [open]);
-
+  // Reset state when dialog opens
   useEffect(() => {
     if (!open) return;
-    
-    const getLocation = () => {
-      setLocationAddress("Fetching location...");
-      
-      const options = {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
-      };
-
-      const success = (position: GeolocationPosition) => {
-        const { latitude: lat, longitude: lng } = position.coords;
-        setLatitude(lat);
-        setLongitude(lng);
-        
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
-          .then((r) => r.json())
-          .then((d) => {
-            const addr = d.display_name || "Location detected";
-            setLocationAddress(addr);
-          })
-          .catch(() => setLocationAddress("Location detected (GPS OK)"));
-      };
-
-      const error = (err: GeolocationPositionError) => {
-        // Retry with lower accuracy if high accuracy fails
-        if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
-          navigator.geolocation.getCurrentPosition(success, 
-            () => setLocationAddress("Location unavailable. Please check GPS."), 
-            { ...options, enableHighAccuracy: false, timeout: 10000 }
-          );
-        } else {
-          setLocationAddress("Location permission denied or unavailable.");
-        }
-      };
-
-      if (!navigator.geolocation) {
-        setLocationAddress("Geolocation not supported by browser.");
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(success, error, options);
-    };
-
-    getLocation();
-    return () => setCapturedImage(null);
+    if (formData.Type !== "On Field") onChangeAction("Type", "On Field");
+    setCapturedImage(null);
+    setLocationAddress(LOCATION_PENDING);
+    setManualLat(null);
+    setManualLng(null);
+    setShowMap(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Geolocation
   useEffect(() => {
-    const fetchLastStatus = async () => {
-      try {
-        const res = await fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}`);
-        if (!res.ok) return;
-        const data = await res.json();
+    if (!open) return;
+
+    const options: PositionOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
+
+    const onSuccess = (pos: GeolocationPosition) => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      setLatitude(lat);
+      setLongitude(lng);
+
+      // Reverse geocode — if offline this will fail, fall back to coords string
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+        .then((r) => r.json())
+        .then((d) => setLocationAddress(d.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`))
+        .catch(() => setLocationAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`));
+    };
+
+    const onError = (err: GeolocationPositionError) => {
+      if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
+        // Retry with lower accuracy
+        navigator.geolocation.getCurrentPosition(
+          onSuccess,
+          () => setLocationAddress("Location unavailable — check GPS settings."),
+          { ...options, enableHighAccuracy: false, timeout: 10000 }
+        );
+      } else {
+        setLocationAddress("Location permission denied.");
+      }
+    };
+
+    if (!navigator.geolocation) {
+      setLocationAddress("Geolocation not supported.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+  }, [open]);
+
+  // Fetch last status
+  useEffect(() => {
+    if (!open) return;
+    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}`)
+      .then((r) => r.json())
+      .then((data) => {
         if (data?.Status) {
           setLastStatus(data.Status);
           setLastTime(new Date(data.date_created).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }));
@@ -134,86 +135,84 @@ export default function CreateAttendance({
           setLastStatus(null);
           setLastTime(null);
         }
-      } catch {
-        /* silent */
-      }
-    };
-    fetchLastStatus();
-  }, [userDetails.ReferenceID]);
+      })
+      .catch(() => { /* silent — offline */ });
+  }, [open, userDetails.ReferenceID]);
+
+  const resetForm = () => {
+    setFormAction({ ReferenceID: userDetails.ReferenceID, Email: userDetails.Email, Type: "On Field", Status: "", PhotoURL: "", Remarks: "", TSM: userDetails.TSM });
+    setCapturedImage(null);
+  };
 
   const handleCreate = async () => {
     if (!capturedImage) return toast.error("Please capture a photo first.");
-    if (!locationAddress || locationAddress === "Fetching location...") return toast.error("Location not ready yet.");
+    if (!formData.Status) return toast.error("Please select Login or Logout.");
+    if (!isLocationReady(locationAddress)) return toast.error("Location not ready yet. Please wait.");
+
     setLoading(true);
-    
-    const isOnline = navigator.onLine;
+
+    const basePayload = {
+      ...formData,
+      Location: locationAddress,
+      Latitude:  manualLat ?? latitude,
+      Longitude: manualLng ?? longitude,
+      FaceData:  faceData,
+    };
 
     try {
-      if (!isOnline) {
-        // Queue the log locally for later sync
-        const payload = { 
-          ...formData, 
-          PhotoURL: capturedImage, // Save the base64 image in the queue
-          Location: locationAddress, 
-          Latitude: latitude, 
-          Longitude: longitude,
-          FaceData: faceData 
-        };
-        await enqueuePendingLog(payload);
-        toast.success("Offline! Your attendance has been queued and will sync when you are back online.");
+      if (!navigator.onLine) {
+        // ── Offline path: store base64 photo in queue ──────────────────────
+        await enqueuePendingLog({ ...basePayload, PhotoURL: capturedImage });
+        toast.success("Saved offline — will sync when you're back online.");
         onOpenChangeAction(false);
-        setFormAction({ ReferenceID: userDetails.ReferenceID, Email: userDetails.Email, Type: "On Field", Status: "", PhotoURL: "", Remarks: "", TSM: "" });
-        setCapturedImage(null);
-      } else {
-        // Online: upload and submit immediately
-        const photoURL = await uploadToCloudinary(capturedImage);
-        const payload = { 
-          ...formData, 
-          PhotoURL: photoURL, 
-          Location: locationAddress, 
-          Latitude: latitude, 
-          Longitude: longitude,
-          FaceData: faceData 
-        };
-        const submitOffline = async () => {
-          const { enqueuePendingLog } = await import("@/lib/offline-store");
-          await enqueuePendingLog(payload as any);
-          toast.success("Saved offline. Will sync when connection returns.");
-          fetchAccountAction();
-          onOpenChangeAction(false);
-          setFormAction({ ReferenceID: userDetails.ReferenceID, Email: userDetails.Email, Type: "On Field", Status: "", PhotoURL: "", Remarks: "", TSM: "" });
-          setCapturedImage(null);
-        };
+        resetForm();
+        return;
+      }
 
-        if (typeof navigator !== "undefined" && !navigator.onLine) {
-          await submitOffline();
-        } else {
-          try {
-            const response = await fetch("/api/ModuleSales/Activity/AddLog", { 
-              method: "POST", 
-              headers: { "Content-Type": "application/json" }, 
-              body: JSON.stringify(payload) 
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message || "Failed to create attendance");
-            toast.success("Attendance recorded successfully!");
-            fetchAccountAction();
-            onOpenChangeAction(false);
-            setFormAction({ ReferenceID: userDetails.ReferenceID, Email: userDetails.Email, Type: "On Field", Status: "", PhotoURL: "", Remarks: "", TSM: "" });
-            setCapturedImage(null);
-          } catch {
-            // Network failed mid-submit — queue it locally so the user doesn't lose data.
-            await submitOffline();
-          }
-        }
+      // ── Online path ────────────────────────────────────────────────────────
+      let photoURL: string;
+      try {
+        photoURL = await uploadToCloudinary(capturedImage);
+      } catch {
+        // Cloudinary failed — queue with base64 for later upload
+        await enqueuePendingLog({ ...basePayload, PhotoURL: capturedImage });
+        toast.success("Photo upload failed — saved offline. Will sync when connection improves.");
+        onOpenChangeAction(false);
+        resetForm();
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/ModuleSales/Activity/AddLog", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ ...basePayload, PhotoURL: photoURL }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Server error");
+        toast.success("Attendance recorded successfully!");
+        fetchAccountAction();
+        onOpenChangeAction(false);
+        resetForm();
+      } catch {
+        // API failed after upload — queue with the Cloudinary URL (no re-upload needed)
+        await enqueuePendingLog({ ...basePayload, PhotoURL: photoURL });
+        toast.success("Saved offline — will sync when connection returns.");
+        onOpenChangeAction(false);
+        resetForm();
       }
     } catch (err: any) {
       toast.error(err?.message || "Error saving attendance.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const isSubmitDisabled = loading || !formData.Status || !capturedImage || locationAddress === "Fetching location..." || locationAddress.includes("unavailable");
+  const isSubmitDisabled =
+    loading ||
+    !formData.Status ||
+    !capturedImage ||
+    !isLocationReady(locationAddress);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChangeAction}>
@@ -265,13 +264,13 @@ export default function CreateAttendance({
             {/* Camera */}
             <div>
               <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Photo Verification</p>
-              <Camera 
+              <Camera
                 registeredDescriptors={userDetails.faceDescriptors}
                 skipFaceVerification={userDetails.faceVerificationEnabled === false}
                 onCaptureAction={(img, face) => {
                   setCapturedImage(img);
                   setFaceData(face);
-                }} 
+                }}
               />
               {capturedImage && (
                 <div className="mt-2 flex items-center gap-2 bg-[#EEF7F2] rounded-xl px-3 py-2">
@@ -281,7 +280,6 @@ export default function CreateAttendance({
               )}
             </div>
 
-            {/* Show form after capture */}
             {capturedImage && (
               <>
                 {/* Attendance Status */}
@@ -292,9 +290,7 @@ export default function CreateAttendance({
                       onClick={() => onChangeAction("Status", "Login")}
                       disabled={lastStatus === "Login"}
                       className={`rounded-2xl border-[1.5px] p-4 flex flex-col items-center gap-2 transition-all ${
-                        formData.Status === "Login"
-                          ? "bg-[#EEF7F2] border-[#1A7A4A]"
-                          : "bg-white border-gray-200 hover:border-gray-300"
+                        formData.Status === "Login" ? "bg-[#EEF7F2] border-[#1A7A4A]" : "bg-white border-gray-200 hover:border-gray-300"
                       } ${lastStatus === "Login" ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
                     >
                       <LogIn size={20} className={formData.Status === "Login" ? "text-[#1A7A4A]" : "text-gray-400"} />
@@ -305,9 +301,7 @@ export default function CreateAttendance({
                       onClick={() => onChangeAction("Status", "Logout")}
                       disabled={lastStatus === "Logout"}
                       className={`rounded-2xl border-[1.5px] p-4 flex flex-col items-center gap-2 transition-all ${
-                        formData.Status === "Logout"
-                          ? "bg-brand-light border-brand-primary"
-                          : "bg-white border-gray-200 hover:border-gray-300"
+                        formData.Status === "Logout" ? "bg-brand-light border-brand-primary" : "bg-white border-gray-200 hover:border-gray-300"
                       } ${lastStatus === "Logout" ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
                     >
                       <LogOut size={20} className={formData.Status === "Logout" ? "text-brand-primary" : "text-gray-400"} />
@@ -339,14 +333,18 @@ export default function CreateAttendance({
                       <MapPin size={16} className="text-brand-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[11px] font-semibold text-brand-primary uppercase tracking-wider mb-1">Detected Location</p>
+                      <p className="text-[11px] font-semibold text-brand-primary uppercase tracking-wider mb-1">
+                        {locationAddress === LOCATION_PENDING ? "Detecting location..." : "Detected Location"}
+                      </p>
                       <p className="text-[12px] text-gray-500 leading-snug">{locationAddress}</p>
-                      <button
-                        onClick={() => setShowMap(!showMap)}
-                        className="mt-2 text-[11px] font-semibold text-brand-primary hover:underline"
-                      >
-                        {showMap ? "Hide map" : "⚙ Set manually →"}
-                      </button>
+                      {isLocationReady(locationAddress) && (
+                        <button
+                          onClick={() => setShowMap(!showMap)}
+                          className="mt-2 text-[11px] font-semibold text-brand-primary hover:underline"
+                        >
+                          {showMap ? "Hide map" : "⚙ Set manually →"}
+                        </button>
+                      )}
                     </div>
                   </div>
                   {showMap && (
@@ -382,13 +380,15 @@ export default function CreateAttendance({
                   ) : (
                     <>
                       <CheckCircle2 size={16} />
-                      Submit Attendance
+                      {navigator.onLine ? "Submit Attendance" : "Save Offline"}
                     </>
                   )}
                 </button>
 
                 <p className="text-center text-[11px] text-gray-300 pb-2">
-                  Submission will be recorded with timestamp & GPS location
+                  {navigator.onLine
+                    ? "Submission will be recorded with timestamp & GPS location"
+                    : "Will sync automatically when you're back online"}
                 </p>
               </>
             )}
