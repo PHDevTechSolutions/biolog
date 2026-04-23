@@ -277,26 +277,45 @@ export default function CreateSalesAttendance({
           Longitude: manualLng ?? longitude,
           FaceData: faceData,
         };
-        const res = await fetch("/api/ModuleSales/Activity/AddLog", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error("Failed to save attendance");
-        toast.success("Attendance created!");
-        fetchAccountAction();
-        setFormAction({
-          ReferenceID: userDetails.ReferenceID,
-          Email: userDetails.Email,
-          TSM: userDetails.TSM,
-          Type: "Client Visit",
-          Status: "",
-          PhotoURL: "",
-          Remarks: "",
-          SiteVisitAccount: "",
-        });
-        setCapturedImage(null);
-        onOpenChangeAction(false);
+        const resetForm = () => {
+          fetchAccountAction();
+          setFormAction({
+            ReferenceID: userDetails.ReferenceID,
+            Email: userDetails.Email,
+            TSM: userDetails.TSM,
+            Type: "Client Visit",
+            Status: "",
+            PhotoURL: "",
+            Remarks: "",
+            SiteVisitAccount: "",
+          });
+          setCapturedImage(null);
+          onOpenChangeAction(false);
+        };
+
+        const submitOffline = async () => {
+          const { enqueuePendingLog } = await import("@/lib/offline-store");
+          await enqueuePendingLog(payload as any);
+          toast.success("Saved offline. Will sync when connection returns.");
+          resetForm();
+        };
+
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          await submitOffline();
+        } else {
+          try {
+            const res = await fetch("/api/ModuleSales/Activity/AddLog", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error("Failed to save attendance");
+            toast.success("Attendance created!");
+            resetForm();
+          } catch {
+            await submitOffline();
+          }
+        }
       }
     } catch (err: any) {
       toast.error(err?.message || "Error saving attendance.");

@@ -1407,9 +1407,23 @@ function ActivityPage() {
     (async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`);
-        if (!res.ok) throw new Error("Failed to fetch user data");
-        const data = await res.json();
+        let data: any = null;
+        try {
+          const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`);
+          if (!res.ok) throw new Error("Failed to fetch user data");
+          data = await res.json();
+          // Cache for offline use
+          try {
+            const { cacheUser } = await import("@/lib/offline-auth");
+            await cacheUser(queryUserId, data);
+          } catch { /* silent */ }
+        } catch {
+          // Network failed — try the offline cache
+          const { getCachedUser } = await import("@/lib/offline-auth");
+          const cached = await getCachedUser(queryUserId);
+          if (!cached) throw new Error("Failed to fetch user data");
+          data = cached;
+        }
         setUserDetails({
           UserId: data._id ?? "", Firstname: data.Firstname ?? "", Lastname: data.Lastname ?? "",
           Email: data.Email ?? "", Role: data.Role ?? "", Department: data.Department ?? "",

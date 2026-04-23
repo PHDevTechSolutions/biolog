@@ -409,6 +409,31 @@ export function LoginForm({
         return;
       }
       setLoading(true);
+
+      const loginEmail  = isPinLogin ? Email : Email;
+      const loginSecret = isPinLogin ? pin   : Password;
+
+      // Fast-path: if browser knows we're offline, skip the network round-trip
+      // and verify directly against the local cache.
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const { verifyOfflineCredential } = await import("@/lib/offline-auth");
+        const offlineResult = await verifyOfflineCredential({
+          email:      loginEmail,
+          secret:     loginSecret,
+          isPinLogin,
+        });
+        if (offlineResult) {
+          toast.success("Offline login — using cached credentials.");
+          setTimeout(() => {
+            router.push(`/activity-planner?id=${encodeURIComponent(offlineResult.userId)}`);
+          }, 600);
+        } else {
+          toast.error("You are offline and these credentials are not cached.");
+        }
+        setLoading(false);
+        return;
+      }
+
       try {
         const response = await fetch("/api/login", {
           method: "POST",
@@ -429,6 +454,17 @@ export function LoginForm({
         }
 
         if (response.ok && result.userId) {
+          // Cache credentials so this device can log in offline next time.
+          try {
+            const { cacheCredential } = await import("@/lib/offline-auth");
+            await cacheCredential({
+              email:      loginEmail,
+              secret:     loginSecret,
+              isPinLogin,
+              userId:     result.userId,
+            });
+          } catch { /* silent */ }
+
           toast.success("Login successful!");
           setTimeout(() => {
             router.push(`/activity-planner?id=${encodeURIComponent(result.userId)}`);
@@ -437,7 +473,23 @@ export function LoginForm({
           toast.error(result.message || "Login failed!");
         }
       } catch {
-        toast.error("An error occurred while logging in!");
+        // Network failed mid-request — try the offline cache as a fallback.
+        try {
+          const { verifyOfflineCredential } = await import("@/lib/offline-auth");
+          const offlineResult = await verifyOfflineCredential({
+            email:      loginEmail,
+            secret:     loginSecret,
+            isPinLogin,
+          });
+          if (offlineResult) {
+            toast.success("Offline login — using cached credentials.");
+            setTimeout(() => {
+              router.push(`/activity-planner?id=${encodeURIComponent(offlineResult.userId)}`);
+            }, 600);
+            return;
+          }
+        } catch { /* silent */ }
+        toast.error("Connection error. Please check your internet and try again.");
       } finally {
         setLoading(false);
       }
