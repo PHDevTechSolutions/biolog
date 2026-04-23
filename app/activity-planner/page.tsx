@@ -1915,36 +1915,87 @@ function ActivityPage() {
         </>
       )}
 
-      {/* Bottom Navigation */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-100 flex items-center" style={{ paddingBottom: "env(safe-area-inset-bottom,0px)" }}>
-        {NAV.map((item) => {
-          const isActive = activeTab === item.id;
-          return (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} className="flex-1 flex flex-col items-center gap-1 py-3 relative transition-all">
-              <item.icon size={20} className={isActive ? "text-[#CC1318]" : "text-gray-400"} strokeWidth={isActive ? 2.5 : 1.8} />
-              <span className={`text-[10px] font-semibold ${isActive ? "text-[#CC1318]" : "text-gray-400"}`}>{item.label}</span>
-              {isActive && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#CC1318]" />}
-            </button>
-          );
-        })}
+      {/* Bottom Navigation — curved FAB cutout */}
+      <div
+        className="flex-shrink-0 relative"
+        style={{ paddingBottom: "env(safe-area-inset-bottom,0px)" }}
+      >
+        {/* SVG curve that creates the mountain notch */}
+        {activeTab === "home" && (userDetails?.Role === "SuperAdmin" || userDetails?.permissions?.canCreateAttendance || userDetails?.permissions?.canCreateSiteVisit) ? (
+          <svg
+            className="absolute -top-[50px] left-0 w-full pointer-events-none"
+            height="60"
+            viewBox="0 0 390 28"
+            preserveAspectRatio="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M0 28 L140 28 Q165 28 172 14 Q180 0 195 0 Q210 0 218 14 Q225 28 250 28 L390 28 Z"
+              fill="white"
+            />
+            {/* Top border line following the curve */}
+            <path
+              d="M0 28 L140 28 Q165 28 172 14 Q180 0 195 0 Q210 0 218 14 Q225 28 250 28 L390 28"
+              fill="none"
+              stroke="#f3f4f6"
+              strokeWidth="1"
+            />
+          </svg>
+        ) : (
+          /* Flat top border when no FAB */
+          <div className="absolute -top-px left-0 right-0 h-px bg-gray-100" />
+        )}
+
+        <div className="bg-white flex items-center">
+          {NAV.map((item) => {
+            const isActive = activeTab === item.id;
+            const isMiddle = item.id === "home";
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={[
+                  "flex-1 flex flex-col items-center gap-1 py-3 relative transition-all",
+                  // Push home tab items down slightly to hug the curve
+                  isMiddle && activeTab === "home" ? "pt-5" : "",
+                ].join(" ")}
+              >
+                <item.icon
+                  size={20}
+                  className={isActive ? "text-[#CC1318]" : "text-gray-400"}
+                  strokeWidth={isActive ? 2.5 : 1.8}
+                />
+                <span className={`text-[10px] font-semibold ${isActive ? "text-[#CC1318]" : "text-gray-400"}`}>
+                  {item.label}
+                </span>
+                {isActive && (
+                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#CC1318]" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Circular FAB — sits in the notch, above the nav */}
         {activeTab === "home" && (
-          <div className="absolute bottom-16 left-1/2 -translate-x-1/2">
+          <div className="absolute -top-12 left-1/2 -translate-x-1/2 z-10">
             {(userDetails?.Role === "SuperAdmin" || userDetails?.permissions?.canCreateAttendance || userDetails?.permissions?.canCreateSiteVisit) && (
-              <button 
+              <button
                 onClick={() => {
-                  if (userDetails?.Role === "SuperAdmin" || (userDetails?.permissions?.canCreateAttendance && userDetails?.permissions?.canCreateSiteVisit)) {
-                    // If both allowed, prioritize attendance or show a menu? 
-                    // For now, let's just open attendance as default if both are allowed
+                  if (
+                    userDetails?.Role === "SuperAdmin" ||
+                    (userDetails?.permissions?.canCreateAttendance && userDetails?.permissions?.canCreateSiteVisit)
+                  ) {
                     setCreateAttendanceOpen(true);
                   } else if (userDetails?.permissions?.canCreateAttendance) {
                     setCreateAttendanceOpen(true);
                   } else {
                     setCreateSalesAttendanceOpen(true);
                   }
-                }} 
-                className="w-14 h-14 rounded-2xl bg-[#CC1318] flex items-center justify-center shadow-xl shadow-red-300 hover:bg-[#A8100F] active:scale-95 transition-all"
+                }}
+                className="w-14 h-14 rounded-full bg-[#CC1318] flex items-center justify-center shadow-xl shadow-red-300 hover:bg-[#A8100F] active:scale-95 transition-all border-4 border-white"
               >
-                <Plus size={24} className="text-white" />
+                <Plus size={22} className="text-white" />
               </button>
             )}
           </div>
