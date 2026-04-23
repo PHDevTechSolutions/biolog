@@ -3,8 +3,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
-    domains: ["res.cloudinary.com"],
+    remotePatterns: [
+      { protocol: "https", hostname: "res.cloudinary.com" },
+    ],
   },
+  allowedDevOrigins: ["*.replit.dev", "*.repl.co", "*.worf.replit.dev", "*.kirk.replit.dev", "*.picard.replit.dev", "*.spock.replit.dev", "*.janeway.replit.dev", "*.riker.replit.dev"],
 
   async headers() {
     return [

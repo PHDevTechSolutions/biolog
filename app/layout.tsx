@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -15,12 +15,30 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Biolog - Attendance & Time Tracking System",
   description: "Created in NextJs Developed By Leroux Y Xchire",
+  applicationName: "Biolog",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Biolog",
+  },
   icons: {
-    icon: "/images/logo/acculog.png",
-    shortcut: "/images/logo/acculog.png",
-    apple: "/images/logo/acculog.png",
+    icon: "/fluxx.png",
+    shortcut: "/fluxx.png",
+    apple: "/fluxx-512.png",
   },
   manifest: "/manifest.json",
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#CC1318",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

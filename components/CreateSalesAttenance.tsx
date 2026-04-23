@@ -117,8 +117,6 @@ export default function CreateSalesAttendance({
       };
 
       const error = (err: GeolocationPositionError) => {
-        console.warn(`Geolocation error (${err.code}): ${err.message}`);
-
         // Retry with lower accuracy if high accuracy fails
         if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
           navigator.geolocation.getCurrentPosition(success,
@@ -171,8 +169,7 @@ export default function CreateSalesAttendance({
         const nextAction = status === "Login" ? "Logout" : "Login";
         onChangeAction("Status", nextAction);
       })
-      .catch((err) => {
-        console.error("Error fetching last status:", err);
+      .catch(() => {
         setLastStatus(null);
         onChangeAction("Status", "Login");
         setLoginCountToday(0);
@@ -280,30 +277,48 @@ export default function CreateSalesAttendance({
           Longitude: manualLng ?? longitude,
           FaceData: faceData,
         };
-        const res = await fetch("/api/ModuleSales/Activity/AddLog", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error("Failed to save attendance");
-        toast.success("Attendance created!");
-        fetchAccountAction();
-        setFormAction({
-          ReferenceID: userDetails.ReferenceID,
-          Email: userDetails.Email,
-          TSM: userDetails.TSM,
-          Type: "Client Visit",
-          Status: "",
-          PhotoURL: "",
-          Remarks: "",
-          SiteVisitAccount: "",
-        });
-        setCapturedImage(null);
-        onOpenChangeAction(false);
+        const resetForm = () => {
+          fetchAccountAction();
+          setFormAction({
+            ReferenceID: userDetails.ReferenceID,
+            Email: userDetails.Email,
+            TSM: userDetails.TSM,
+            Type: "Client Visit",
+            Status: "",
+            PhotoURL: "",
+            Remarks: "",
+            SiteVisitAccount: "",
+          });
+          setCapturedImage(null);
+          onOpenChangeAction(false);
+        };
+
+        const submitOffline = async () => {
+          const { enqueuePendingLog } = await import("@/lib/offline-store");
+          await enqueuePendingLog(payload as any);
+          toast.success("Saved offline. Will sync when connection returns.");
+          resetForm();
+        };
+
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          await submitOffline();
+        } else {
+          try {
+            const res = await fetch("/api/ModuleSales/Activity/AddLog", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error("Failed to save attendance");
+            toast.success("Attendance created!");
+            resetForm();
+          } catch {
+            await submitOffline();
+          }
+        }
       }
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Error saving attendance.");
+      toast.error(err?.message || "Error saving attendance.");
     }
     setLoading(false);
   };

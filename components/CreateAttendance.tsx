@@ -98,8 +98,6 @@ export default function CreateAttendance({
       };
 
       const error = (err: GeolocationPositionError) => {
-        console.warn(`Geolocation error (${err.code}): ${err.message}`);
-        
         // Retry with lower accuracy if high accuracy fails
         if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
           navigator.geolocation.getCurrentPosition(success, 
@@ -136,8 +134,8 @@ export default function CreateAttendance({
           setLastStatus(null);
           setLastTime(null);
         }
-      } catch (err) {
-        console.error(err);
+      } catch {
+        /* silent */
       }
     };
     fetchLastStatus();
@@ -177,22 +175,40 @@ export default function CreateAttendance({
           Longitude: longitude,
           FaceData: faceData 
         };
-        const response = await fetch("/api/ModuleSales/Activity/AddLog", { 
-          method: "POST", 
-          headers: { "Content-Type": "application/json" }, 
-          body: JSON.stringify(payload) 
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || "Failed to create attendance");
-        toast.success("Attendance recorded successfully!");
-        fetchAccountAction();
-        onOpenChangeAction(false);
-        setFormAction({ ReferenceID: userDetails.ReferenceID, Email: userDetails.Email, Type: "On Field", Status: "", PhotoURL: "", Remarks: "", TSM: "" });
-        setCapturedImage(null);
+        const submitOffline = async () => {
+          const { enqueuePendingLog } = await import("@/lib/offline-store");
+          await enqueuePendingLog(payload as any);
+          toast.success("Saved offline. Will sync when connection returns.");
+          fetchAccountAction();
+          onOpenChangeAction(false);
+          setFormAction({ ReferenceID: userDetails.ReferenceID, Email: userDetails.Email, Type: "On Field", Status: "", PhotoURL: "", Remarks: "", TSM: "" });
+          setCapturedImage(null);
+        };
+
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          await submitOffline();
+        } else {
+          try {
+            const response = await fetch("/api/ModuleSales/Activity/AddLog", { 
+              method: "POST", 
+              headers: { "Content-Type": "application/json" }, 
+              body: JSON.stringify(payload) 
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Failed to create attendance");
+            toast.success("Attendance recorded successfully!");
+            fetchAccountAction();
+            onOpenChangeAction(false);
+            setFormAction({ ReferenceID: userDetails.ReferenceID, Email: userDetails.Email, Type: "On Field", Status: "", PhotoURL: "", Remarks: "", TSM: "" });
+            setCapturedImage(null);
+          } catch {
+            // Network failed mid-submit — queue it locally so the user doesn't lose data.
+            await submitOffline();
+          }
+        }
       }
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Error saving attendance.");
+      toast.error(err?.message || "Error saving attendance.");
     }
     setLoading(false);
   };

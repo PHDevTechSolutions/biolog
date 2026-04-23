@@ -48,8 +48,8 @@ function WeatherDisplay() {
             description: data.weather[0].description
           });
         }
-      } catch (err) {
-        console.error("Weather fetch error:", err);
+      } catch {
+        // Silent: weather is non-critical
       } finally {
         setLoading(false);
       }
@@ -337,7 +337,7 @@ function HomeTab({
           }
         }
       })
-      .catch(err => console.error("Settings fetch error:", err));
+      .catch(() => { /* silent */ });
   }, []);
 
   // Check if user is late
@@ -978,8 +978,8 @@ function ProfileTab({
         const data = await res.json();
         setSessions(data);
       }
-    } catch (e) {
-      console.error("Failed to fetch sessions", e);
+    } catch {
+      /* silent */
     } finally {
       setSessionsLoading(false);
     }
@@ -1407,9 +1407,23 @@ function ActivityPage() {
     (async () => {
       try {
         setLoading(true);
-        const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`);
-        if (!res.ok) throw new Error("Failed to fetch user data");
-        const data = await res.json();
+        let data: any = null;
+        try {
+          const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`);
+          if (!res.ok) throw new Error("Failed to fetch user data");
+          data = await res.json();
+          // Cache for offline use
+          try {
+            const { cacheUser } = await import("@/lib/offline-auth");
+            await cacheUser(queryUserId, data);
+          } catch { /* silent */ }
+        } catch {
+          // Network failed — try the offline cache
+          const { getCachedUser } = await import("@/lib/offline-auth");
+          const cached = await getCachedUser(queryUserId);
+          if (!cached) throw new Error("Failed to fetch user data");
+          data = cached;
+        }
         setUserDetails({
           UserId: data._id ?? "", Firstname: data.Firstname ?? "", Lastname: data.Lastname ?? "",
           Email: data.Email ?? "", Role: data.Role ?? "", Department: data.Department ?? "",
@@ -1482,12 +1496,17 @@ function ActivityPage() {
         const data = await res.json();
         setMeetings(data);
       }
-    } catch (e) {
-      console.error("Failed to fetch meetings", e);
+    } catch {
+      /* silent */
     }
   }, [userDetails]);
 
-  useEffect(() => { fetchAccountAction(); fetchMeetings(); }, [userDetails, dateCreatedFilterRange, fetchMeetings]);
+  useEffect(() => {
+    if (!userDetails) return;
+    fetchAccountAction();
+    fetchMeetings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userDetails, dateCreatedFilterRange]);
 
   useEffect(() => {
     if (posts.length === 0 && meetings.length === 0) return;
@@ -1613,8 +1632,7 @@ function ActivityPage() {
       const userRes = await fetch(`/api/user?id=${encodeURIComponent(userId)}`);
       const userData = await userRes.json();
       setUserDetails(prev => prev ? { ...prev, faceDescriptors: userData.faceDescriptors } : null);
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error("Error saving face data.");
     }
   };
@@ -1684,9 +1702,8 @@ function ActivityPage() {
       setUserDetails(prev => prev ? { ...prev, credentials: userData.credentials } : null);
 
     } catch (err: any) {
-      console.error("Biometric error:", err);
-      if (err.name !== "NotAllowedError") {
-        toast.error(err.message || "Error registering biometrics.");
+      if (err?.name !== "NotAllowedError") {
+        toast.error(err?.message || "Error registering biometrics.");
       }
     } finally {
       setBiometricRegistering(false);
@@ -1707,7 +1724,6 @@ function ActivityPage() {
         throw new Error("Failed to update email");
       }
     } catch (err) {
-      console.error(err);
       throw err;
     }
   };

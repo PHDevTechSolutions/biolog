@@ -1,24 +1,32 @@
 {
-  "name": "Biolog",
+  "name": "Biolog - Attendance & Time Tracking",
   "short_name": "Biolog",
   "description": "Biometric attendance and activity logging",
   "start_url": "/activity-planner",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#F9F6F4",
   "theme_color": "#CC1318",
   "orientation": "portrait",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/fluxx.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/fluxx-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/fluxx-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
