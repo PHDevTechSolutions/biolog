@@ -1,7 +1,7 @@
 // public/service-worker.js
-// Acculog PWA — Service Worker v5
+// Acculog PWA — Service Worker v6
 
-const CACHE_NAME     = "acculog-cache-v5";   // bump version → forces re-install
+const CACHE_NAME     = "acculog-cache-v6";   // bump version → forces re-install
 const OSM_CACHE_NAME = "acculog-osm-tiles-v1";
 const SYNC_TAG       = "sync-activity-logs";
 
@@ -46,7 +46,16 @@ const OSM_HOSTS = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then((cache) =>
+        // Use individual put() calls so a single 404 doesn't fail the whole install.
+        Promise.all(
+          STATIC_ASSETS.map((url) =>
+            fetch(url, { cache: "reload" })
+              .then((res) => (res.ok ? cache.put(url, res) : null))
+              .catch(() => null)
+          )
+        )
+      )
       .then(() => self.skipWaiting())   // activate immediately
   );
 });
@@ -74,9 +83,26 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // ⓪ Skip Next.js dev internals (HMR, webpack chunks, dev-time assets).
+  // These change on every reload and should never be cached.
+  if (
+    url.pathname.startsWith("/_next/webpack-hmr") ||
+    url.pathname.startsWith("/_next/static/development") ||
+    url.pathname.startsWith("/__nextjs") ||
+    url.pathname.startsWith("/_next/data") ||
+    url.search.includes("hot-update")
+  ) {
+    return; // let the browser handle it normally
+  }
+
   // ① OSM map tiles — Cache-First, max 500 tiles
   if (OSM_HOSTS.includes(url.hostname)) {
     event.respondWith(osmTileStrategy(request));
+    return;
+  }
+
+  // Cross-origin requests (other than OSM) — pass through, no caching.
+  if (url.origin !== self.location.origin) {
     return;
   }
 
