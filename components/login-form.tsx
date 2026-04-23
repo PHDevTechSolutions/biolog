@@ -459,32 +459,28 @@ export function LoginForm({
         }
 
         if (response.ok && result.userId) {
-          // Cache credentials for offline login — do NOT silence errors here
-          // so we can see if caching fails during development.
-          const { cacheCredential, setOfflineSession } = await import("@/lib/offline-auth");
-
-          // Always cache the credential that was just used
-          await cacheCredential({
-            email:      loginEmail,
-            secret:     loginSecret,
-            isPinLogin,
-            userId:     result.userId,
-          }).catch(() => { /* storage unavailable — non-fatal */ });
-
-          // Also cache the other type if we have it (so both password and PIN work offline)
-          if (!isPinLogin && result.pin) {
+          // ── Cache credentials for offline login ──────────────────────────
+          let cached = false;
+          try {
+            const { cacheCredential, setOfflineSession } = await import("@/lib/offline-auth");
             await cacheCredential({
               email:      loginEmail,
-              secret:     result.pin,
-              isPinLogin: true,
+              secret:     loginSecret,
+              isPinLogin,
               userId:     result.userId,
-            }).catch(() => {});
+            });
+            await setOfflineSession(result.userId);
+            cached = true;
+          } catch (cacheErr) {
+            // Log so we can debug — but don't block login
+            console.warn("[offline-auth] cacheCredential failed:", cacheErr);
           }
 
-          await setOfflineSession(result.userId)
-            .catch(() => { /* non-fatal */ });
-
-          toast.success("Login successful!");
+          toast.success(
+            cached
+              ? "Login successful! Credentials saved for offline use."
+              : "Login successful! (Offline cache unavailable on this device)"
+          );
           setTimeout(() => {
             router.push(`/activity-planner?id=${encodeURIComponent(result.userId)}`);
           }, 800);
