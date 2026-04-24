@@ -19,3 +19,14 @@ This project may require secrets (DATABASE_URL, MongoDB URI, Supabase, Firebase,
 
 ## Deployment
 Use Replit Deployments (autoscale) with build `npm run build` and run `npm run start`.
+
+## Customization & PWA Features (Activity Planner)
+- `lib/preferences.ts` — localStorage prefs (`biolog_prefs_v1`) with `usePreferences()` hook + `getPreferences()` sync getter. Marked `"use client"`.
+- `lib/haptics.ts` — `haptic("light"|"medium"|"heavy"|"success"|"warning"|"error")`, gated by `prefs.haptics`. Plain util module (not `"use client"`).
+- `lib/notification-sound.ts` — `playNotificationSound()` Web Audio chime, gated by `prefs.notificationSound`. Plain util module.
+- `ProfileTab` includes **Customize** panel (toggle haptics, sound, vibration, push, swipe-refresh, weather, offline banner) and **Install App on Phone** section (iOS Safari guide modal + Android beforeinstallprompt).
+- `public/manifest.json` exposes PWA shortcuts: Clock In (`?shortcut=attendance`) and Site Visit (`?shortcut=sitevisit`); `ActivityPage` auto-opens the matching dialog on mount.
+- Meeting time displays use `hour12: true` everywhere (page.tsx + dashboard-dialog.tsx).
+
+### Known dev-mode warning
+Browser console may log "Invalid hook call" at HMR connect on `/activity-planner` under Next.js 16 + React 19 + Turbopack. This is a benign HMR-runtime warning — production build passes, all routes return 200, hooks follow the Rules of Hooks (verified by stubbing). It does not appear in `next start`.

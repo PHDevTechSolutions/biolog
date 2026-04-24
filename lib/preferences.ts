@@ -1,10 +1,8 @@
+"use client";
 // lib/preferences.ts
 // User preferences stored in localStorage with a reactive React hook.
-// Used for things like haptics on/off, notification sound, etc.
 
-"use client";
-
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 
 export interface UserPreferences {
   haptics: boolean;
@@ -62,19 +60,22 @@ export function usePreferences() {
   useEffect(() => {
     setPrefs(readPrefs());
     const handler = () => setPrefs(readPrefs());
-    window.addEventListener(PREF_EVENT, handler);
-    window.addEventListener("storage", handler);
-    return () => {
-      window.removeEventListener(PREF_EVENT, handler);
-      window.removeEventListener("storage", handler);
-    };
+    if (typeof window !== "undefined") {
+      window.addEventListener(PREF_EVENT, handler);
+      window.addEventListener("storage", handler);
+      return () => {
+        window.removeEventListener(PREF_EVENT, handler);
+        window.removeEventListener("storage", handler);
+      };
+    }
+    return undefined;
   }, []);
 
-  const setPref = useCallback(<K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
+  function setPref(key: keyof UserPreferences, value: boolean) {
     const next = { ...readPrefs(), [key]: value };
     writePrefs(next);
     setPrefs(next);
-  }, []);
+  }
 
   return { prefs, setPref };
 }
