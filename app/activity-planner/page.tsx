@@ -1,7 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { UserProvider, useUser } from "@/contexts/UserContext";
@@ -1522,16 +1520,8 @@ function ActivityPage() {
   const [biometricRegistering, setBiometricRegistering] = useState(false);
   const [startHour, setStartHour] = useState(8);
 
-  useEffect(() => {
-    fetch("/api/admin/settings")
-      .then(r => r.json())
-      .then(data => {
-        if (data?.officeStartTime) {
-          setStartHour(parseInt(data.officeStartTime.split(":")[0]));
-        }
-      });
-  }, []);
-
+  // Office start hour comes from the same /api/admin/settings call already made
+  // higher up in the component — no need to refetch it here.
 
   const [formData, setFormData] = useState<FormData>({
     ReferenceID: "", Email: "", Type: "", Status: "", PhotoURL: "", Remarks: "", TSM: "",
@@ -1562,44 +1552,63 @@ function ActivityPage() {
 
   useEffect(() => {
     if (!queryUserId) { setError("User ID is missing."); setLoading(false); return; }
+
+    const applyData = (data: any) => {
+      setUserDetails({
+        UserId: data._id ?? "", Firstname: data.Firstname ?? "", Lastname: data.Lastname ?? "",
+        Email: data.Email ?? "", Role: data.Role ?? "", Department: data.Department ?? "",
+        Company: data.Company ?? "", ReferenceID: data.ReferenceID ?? "",
+        profilePicture: data.profilePicture ?? "", faceDescriptors: data.faceDescriptors ?? null,
+        credentials: data.credentials ?? [],
+        twoFactorEnabled: data.twoFactorEnabled ?? false,
+        SecondaryEmail: data.SecondaryEmail ?? "",
+        pin: data.pin ?? "",
+        TSM: data.TSM ?? "",
+        Directories: data.Directories ?? [],
+        permissions: data.permissions ?? { canCreateAttendance: true, canCreateSiteVisit: true },
+        faceVerificationEnabled: data.faceVerificationEnabled ?? true,
+      });
+      setError(null);
+    };
+
+    let cancelled = false;
+    setLoading(true);
+
+    // ── Stale-while-revalidate: paint cached profile instantly, refresh in background ──
     (async () => {
       try {
-        setLoading(true);
-        let data: any = null;
+        const { getCachedUser, cacheUser } = await import("@/lib/offline-auth");
+        const cached = await getCachedUser(queryUserId);
+        if (cached && !cancelled) {
+          applyData(cached);
+          setLoading(false); // shell can render immediately
+        }
+
+        // Background refresh from network
         try {
           const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`);
           if (!res.ok) throw new Error("Failed to fetch user data");
-          data = await res.json();
-          // Cache for offline use
-          try {
-            const { cacheUser } = await import("@/lib/offline-auth");
-            await cacheUser(queryUserId, data);
-          } catch { /* silent */ }
+          const fresh = await res.json();
+          if (!cancelled) {
+            applyData(fresh);
+            setLoading(false);
+          }
+          cacheUser(queryUserId, fresh).catch(() => {});
         } catch {
-          // Network failed — try the offline cache
-          const { getCachedUser } = await import("@/lib/offline-auth");
-          const cached = await getCachedUser(queryUserId);
-          if (!cached) throw new Error("Failed to fetch user data");
-          data = cached;
+          if (!cached && !cancelled) {
+            setError("Failed to load user data.");
+            setLoading(false);
+          }
         }
-        setUserDetails({
-          UserId: data._id ?? "", Firstname: data.Firstname ?? "", Lastname: data.Lastname ?? "",
-          Email: data.Email ?? "", Role: data.Role ?? "", Department: data.Department ?? "",
-          Company: data.Company ?? "", ReferenceID: data.ReferenceID ?? "",
-          profilePicture: data.profilePicture ?? "", faceDescriptors: data.faceDescriptors ?? null,
-          credentials: data.credentials ?? [],
-          twoFactorEnabled: data.twoFactorEnabled ?? false,
-          SecondaryEmail: data.SecondaryEmail ?? "",
-          pin: data.pin ?? "",
-          TSM: data.TSM ?? "",
-          Directories: data.Directories ?? [],
-          permissions: data.permissions ?? { canCreateAttendance: true, canCreateSiteVisit: true },
-          faceVerificationEnabled: data.faceVerificationEnabled ?? true,
-        });
-        setError(null);
-      } catch { setError("Failed to load user data."); }
-      finally { setLoading(false); }
+      } catch {
+        if (!cancelled) {
+          setError("Failed to load user data.");
+          setLoading(false);
+        }
+      }
     })();
+
+    return () => { cancelled = true; };
   }, [queryUserId]);
 
   useEffect(() => {
@@ -1610,15 +1619,22 @@ function ActivityPage() {
   const fetchAccountAction = useCallback(async () => {
     if (!userDetails) return;
     setLoading(true);
+
+    // ── Stale-while-revalidate: paint cached logs instantly ──
     try {
-      let allLogs: ActivityLog[] = [];
-      let page = 1;
-      const limit = 100;
-      let totalPages = 1;
-      do {
+      const { getCachedLogs } = await import("@/lib/offline-logs-cache");
+      const cached = await getCachedLogs();
+      if (cached.length > 0) {
+        setPosts(cached as unknown as ActivityLog[]);
+        setLoading(false); // user sees data immediately while we refresh
+      }
+    } catch { /* silent */ }
+
+    try {
+      const buildParams = (page: number) => {
         const params = new URLSearchParams();
         params.append("page", page.toString());
-        params.append("limit", limit.toString());
+        params.append("limit", "500"); // larger pages → fewer round-trips
         params.append("role", userDetails.Role);
         if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
           params.append("referenceID", userDetails.ReferenceID);
@@ -1627,34 +1643,46 @@ function ActivityPage() {
           params.append("startDate", dateCreatedFilterRange.from.toISOString());
           params.append("endDate", (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString());
         }
-        const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
-        if (!res.ok) throw new Error("Failed to fetch logs");
-        const data = await res.json();
-        allLogs = allLogs.concat(data.data ?? []);
-        totalPages = data.pagination?.totalPages ?? 1;
-        page++;
-      } while (page <= totalPages);
+        return params;
+      };
+
+      // First page tells us how many total pages exist
+      const firstRes = await fetch(`/api/ModuleSales/Activity/FetchLog?${buildParams(1).toString()}`);
+      if (!firstRes.ok) throw new Error("Failed to fetch logs");
+      const firstData = await firstRes.json();
+      const totalPages: number = firstData.pagination?.totalPages ?? 1;
+      let allLogs: ActivityLog[] = firstData.data ?? [];
+
+      // Show first page immediately so the UI updates as soon as possible
       setPosts(allLogs);
-      // Cache for offline use
-      try {
-        const { cacheLogs } = await import("@/lib/offline-logs-cache");
-        await cacheLogs(allLogs as any);
-      } catch { /* non-critical */ }
-    } catch {
-      // Network failed — load from offline cache
-      try {
-        const { getCachedLogs } = await import("@/lib/offline-logs-cache");
-        const cached = await getCachedLogs();
-        if (cached.length > 0) {
-          setPosts(cached as unknown as ActivityLog[]);
-        } else {
-          setPosts([]);
-        }
-      } catch {
-        setPosts([]);
+      setLoading(false);
+
+      // Fetch any remaining pages in PARALLEL instead of sequentially
+      if (totalPages > 1) {
+        const remaining = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) =>
+            fetch(`/api/ModuleSales/Activity/FetchLog?${buildParams(i + 2).toString()}`)
+              .then((r) => (r.ok ? r.json() : { data: [] }))
+              .catch(() => ({ data: [] }))
+          )
+        );
+        allLogs = remaining.reduce<ActivityLog[]>(
+          (acc, d) => acc.concat((d.data ?? []) as ActivityLog[]),
+          allLogs
+        );
+        setPosts(allLogs);
       }
+
+      // Cache for offline use (non-blocking)
+      import("@/lib/offline-logs-cache")
+        .then(({ cacheLogs }) => cacheLogs(allLogs as any))
+        .catch(() => {});
+    } catch {
+      // Network failed — keep cached posts already painted; if none, show empty
+      setPosts((prev) => (prev.length > 0 ? prev : []));
+    } finally {
+      setLoading(false);
     }
-    finally { setLoading(false); }
   }, [userDetails, dateCreatedFilterRange]);
 
   const { pendingCount, isOnline, isSyncing, syncNow } = useOfflineSync(fetchAccountAction);
@@ -1667,7 +1695,7 @@ function ActivityPage() {
 
   // ── Swipe to refresh (home tab) ───────────────────────────────────────────
   const { containerRef: swipeContainerRef, pullDistance, isRefreshing: isPullRefreshing } = useSwipeToRefresh(
-    async () => { await fetchAccountAction(); await fetchMeetings(); },
+    async () => { await Promise.all([fetchAccountAction(), fetchMeetings()]); },
     activeTab === "home"
   );
 
@@ -1704,8 +1732,8 @@ function ActivityPage() {
 
   useEffect(() => {
     if (!userDetails) return;
-    fetchAccountAction();
-    fetchMeetings();
+    // Run both fetches in parallel — they're independent.
+    Promise.all([fetchAccountAction(), fetchMeetings()]).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userDetails, dateCreatedFilterRange]);
 
