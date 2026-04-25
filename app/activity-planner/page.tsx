@@ -4,12 +4,9 @@ export const dynamic = "force-dynamic";
 
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 import { FormatProvider } from "@/contexts/FormatContext";
-import ActivityDialog from "@/components/dashboard-dialog";
-import CreateAttendance from "@/components/CreateAttendance";
-import CreateSalesAttendance from "@/components/CreateSalesAttenance";
-import Camera from "@/components/camera";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
 import { AnimatePresence, motion, useInView } from "framer-motion";
@@ -20,7 +17,7 @@ import {
   MapPinCheck, Building2, Home, BarChart3, User,
   LogIn, LogOut, TrendingUp, Plus, FileSpreadsheet, CalendarIcon, Clock, Megaphone,
   ChevronRight as ArrowRight, Power, Cloud, Sun, CloudRain, CloudLightning, Wind, Info, Fingerprint,
-  Smartphone, Laptop, Globe, ShieldCheck, Trash2, Settings, Users, Search, MoreVertical, Edit2, ShieldAlert, History, Download
+  Smartphone, Laptop, Globe, ShieldCheck, Trash2, Settings, Users, Search, MoreVertical, Edit2, ShieldAlert, History, Download, RefreshCw
 } from "lucide-react";
 
 import { useOfflineSync } from "@/hooks/useOfflineSync";
@@ -29,42 +26,57 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { useSwipeToRefresh } from "@/hooks/useSwipeToRefresh";
 
+// ── Lazy-load heavy dialog components — only parsed/bundled when first opened ─
+const ActivityDialog        = dynamic(() => import("@/components/dashboard-dialog"),    { ssr: false });
+const CreateAttendance      = dynamic(() => import("@/components/CreateAttendance"),     { ssr: false });
+const CreateSalesAttendance = dynamic(() => import("@/components/CreateSalesAttenance"), { ssr: false });
+const CameraLazy            = dynamic(() => import("@/components/camera"),              { ssr: false });
+
 
 // ── Weather Component ────────────────────────────────────────────────────────
 
+const WEATHER_CACHE_KEY = "acculog_weather";
+const WEATHER_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 function WeatherDisplay() {
-  const [weather, setWeather] = useState<{ temp: number; icon: string; description: string } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [weather, setWeather] = useState<{ temp: number; icon: string } | null>(null);
 
   useEffect(() => {
+    // Check sessionStorage cache first — avoids re-fetching on every tab switch
+    try {
+      const cached = sessionStorage.getItem(WEATHER_CACHE_KEY);
+      if (cached) {
+        const { data, ts } = JSON.parse(cached);
+        if (Date.now() - ts < WEATHER_CACHE_TTL) {
+          setWeather(data);
+          return;
+        }
+      }
+    } catch { /* ignore */ }
+
     const fetchWeather = async (lat: number, lon: number) => {
       try {
-        // Using OpenWeatherMap (You might need to replace with your API key if this is a real production app)
-        // For now, I'll use a public-ish one or mock it slightly for safety, but let's try a real fetch.
-        const API_KEY = "bd5e378503939ddaee76f12ad7a97608"; // Common public key for testing, or use a better one
-        const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`);
+        const API_KEY = "bd5e378503939ddaee76f12ad7a97608";
+        const res = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`
+        );
         const data = await res.json();
         if (data.main) {
-          setWeather({
-            temp: Math.round(data.main.temp),
-            icon: data.weather[0].icon,
-            description: data.weather[0].description
-          });
+          const w = { temp: Math.round(data.main.temp), icon: data.weather[0].icon };
+          setWeather(w);
+          try { sessionStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ data: w, ts: Date.now() })); } catch { /* quota */ }
         }
-      } catch {
-        // Silent: weather is non-critical
-      } finally {
-        setLoading(false);
-      }
+      } catch { /* non-critical */ }
     };
 
     navigator.geolocation.getCurrentPosition(
       (pos) => fetchWeather(pos.coords.latitude, pos.coords.longitude),
-      () => setLoading(false)
+      () => { /* silent */ },
+      { timeout: 8000, maximumAge: 600000 } // use cached GPS up to 10 min old
     );
   }, []);
 
-  if (loading || !weather) return null;
+  if (!weather) return null;
 
   const WeatherIcon = () => {
     const code = weather.icon;
@@ -74,6 +86,7 @@ function WeatherDisplay() {
     if (code.includes("11")) return <CloudLightning size={14} className="text-purple-400" />;
     return <Cloud size={14} className="text-gray-400" />;
   };
+
 
   return (
     <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md rounded-full px-2.5 py-1 border border-white/10 shadow-sm">
@@ -952,6 +965,7 @@ function AdminTab({ userId }: { userId: string | null | undefined }) {
 function ProfileTab({
   userDetails,
   userId,
+  isActive,
   onLogout,
   onFaceRegister,
   onBiometricRegister,
@@ -960,6 +974,7 @@ function ProfileTab({
 }: {
   userDetails: UserDetails | null;
   userId: string | null | undefined;
+  isActive: boolean;
   onLogout: () => void;
   onFaceRegister: () => void;
   onBiometricRegister: () => void;
@@ -1051,8 +1066,8 @@ function ProfileTab({
   }, []);
 
   useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+    if (isActive) fetchSessions();
+  }, [fetchSessions, isActive]);
 
   useEffect(() => {
     if (userDetails?.SecondaryEmail) {
@@ -1610,51 +1625,65 @@ function ActivityPage() {
   const fetchAccountAction = useCallback(async () => {
     if (!userDetails) return;
     setLoading(true);
+
+    const buildParams = (page: number) => {
+      const params = new URLSearchParams();
+      params.append("page", page.toString());
+      params.append("limit", "50"); // smaller pages = faster first paint
+      params.append("role", userDetails.Role);
+      if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
+        params.append("referenceID", userDetails.ReferenceID);
+      }
+      if (dateCreatedFilterRange?.from) {
+        params.append("startDate", dateCreatedFilterRange.from.toISOString());
+        params.append("endDate", (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString());
+      }
+      return params;
+    };
+
     try {
-      let allLogs: ActivityLog[] = [];
-      let page = 1;
-      const limit = 100;
-      let totalPages = 1;
-      do {
-        const params = new URLSearchParams();
-        params.append("page", page.toString());
-        params.append("limit", limit.toString());
-        params.append("role", userDetails.Role);
-        if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
-          params.append("referenceID", userDetails.ReferenceID);
+      // ── Page 1: show immediately so the UI isn't blank ──────────────────
+      const firstRes = await fetch(`/api/ModuleSales/Activity/FetchLog?${buildParams(1)}`);
+      if (!firstRes.ok) throw new Error("Failed to fetch logs");
+      const firstData = await firstRes.json();
+      const firstPage: ActivityLog[] = firstData.data ?? [];
+      const totalPages: number = firstData.pagination?.totalPages ?? 1;
+
+      setPosts(firstPage);   // ← render immediately
+      setLoading(false);     // ← hide spinner after first page
+
+      // ── Remaining pages: load silently in background ─────────────────────
+      if (totalPages > 1) {
+        let allLogs = [...firstPage];
+        for (let page = 2; page <= totalPages; page++) {
+          const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${buildParams(page)}`);
+          if (!res.ok) break;
+          const data = await res.json();
+          allLogs = allLogs.concat(data.data ?? []);
+          setPosts([...allLogs]); // update incrementally
         }
-        if (dateCreatedFilterRange?.from) {
-          params.append("startDate", dateCreatedFilterRange.from.toISOString());
-          params.append("endDate", (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString());
-        }
-        const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
-        if (!res.ok) throw new Error("Failed to fetch logs");
-        const data = await res.json();
-        allLogs = allLogs.concat(data.data ?? []);
-        totalPages = data.pagination?.totalPages ?? 1;
-        page++;
-      } while (page <= totalPages);
-      setPosts(allLogs);
-      // Cache for offline use
-      try {
-        const { cacheLogs } = await import("@/lib/offline-logs-cache");
-        await cacheLogs(allLogs as any);
-      } catch { /* non-critical */ }
+        // Cache the full dataset
+        try {
+          const { cacheLogs } = await import("@/lib/offline-logs-cache");
+          await cacheLogs(allLogs as any);
+        } catch { /* non-critical */ }
+      } else {
+        try {
+          const { cacheLogs } = await import("@/lib/offline-logs-cache");
+          await cacheLogs(firstPage as any);
+        } catch { /* non-critical */ }
+      }
     } catch {
+      setLoading(false);
       // Network failed — load from offline cache
       try {
         const { getCachedLogs } = await import("@/lib/offline-logs-cache");
         const cached = await getCachedLogs();
-        if (cached.length > 0) {
-          setPosts(cached as unknown as ActivityLog[]);
-        } else {
-          setPosts([]);
-        }
+        setPosts(cached.length > 0 ? (cached as unknown as ActivityLog[]) : []);
       } catch {
         setPosts([]);
       }
     }
-    finally { setLoading(false); }
   }, [userDetails, dateCreatedFilterRange]);
 
   const { pendingCount, isOnline, isSyncing, syncNow } = useOfflineSync(fetchAccountAction);
@@ -1709,19 +1738,33 @@ function ActivityPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userDetails, dateCreatedFilterRange]);
 
+  // Debounced usersMap fetch — waits 800ms after last posts/meetings change
+  // so incremental page loads don't fire a new /api/users request every 50 logs
+  const usersMapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (posts.length === 0 && meetings.length === 0) return;
-    (async () => {
-      const uniqueRefs = Array.from(new Set([...posts.map((p) => p.ReferenceID), ...meetings.map(m => m.ReferenceID)]));
+    if (usersMapTimerRef.current) clearTimeout(usersMapTimerRef.current);
+    usersMapTimerRef.current = setTimeout(async () => {
+      const uniqueRefs = Array.from(new Set([
+        ...posts.map((p) => p.ReferenceID),
+        ...meetings.map((m) => m.ReferenceID),
+      ]));
       try {
         const res = await fetch(`/api/users?referenceIDs=${uniqueRefs.join(",")}`);
         if (!res.ok) return;
         const usersData = await res.json();
         const map: Record<string, UserInfo> = {};
-        usersData.forEach((u: any) => { map[u.ReferenceID] = { Firstname: u.Firstname, Lastname: u.Lastname, profilePicture: u.profilePicture, TSM: u.TSM, Directories: u.Directories ?? [] }; });
+        usersData.forEach((u: any) => {
+          map[u.ReferenceID] = {
+            Firstname: u.Firstname, Lastname: u.Lastname,
+            profilePicture: u.profilePicture, TSM: u.TSM,
+            Directories: u.Directories ?? [],
+          };
+        });
         setUsersMap(map);
       } catch { /* silent */ }
-    })();
+    }, 800);
+    return () => { if (usersMapTimerRef.current) clearTimeout(usersMapTimerRef.current); };
   }, [posts, meetings]);
 
   const allVisibleAccounts = useMemo(() => {
@@ -1766,9 +1809,8 @@ function ActivityPage() {
     return [...visits, ...todayMeetings];
   }, [allVisibleAccounts, allVisibleMeetings, todayKey, startHour]);
 
-  const timelineItems: TimelineItem[] = todayVisits.map((p) => {
+  const timelineItems = useMemo<TimelineItem[]>(() => todayVisits.map((p) => {
     if ('Title' in p) {
-      // It's a meeting
       return {
         id: p._id ?? p.CreatedAt,
         title: p.Title,
@@ -1778,7 +1820,6 @@ function ActivityPage() {
         date: new Date(p.StartDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
     } else {
-      // It's an activity log
       return {
         id: p._id ?? p.date_created,
         title: p.Type === "Client Visit" ? p.SiteVisitAccount : p.Status,
@@ -1788,7 +1829,8 @@ function ActivityPage() {
         date: new Date(p.date_created).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
     }
-  }).sort((a, b) => new Date(b.id).getTime() - new Date(a.id).getTime());
+  }).sort((a, b) => new Date(b.id).getTime() - new Date(a.id).getTime()),
+  [todayVisits]);
 
   const monthlyStats = useMemo(() => {
     const thisMonthLogs = allVisibleAccounts.filter((p) => {
@@ -1956,7 +1998,7 @@ function ActivityPage() {
       case "reports":
         return <ReportsTab monthlyStats={monthlyStats} allLogs={allVisibleAccounts} userId={userId} />;
       case "profile":
-        return <ProfileTab userDetails={userDetails} userId={userId} onLogout={handleLogout} onFaceRegister={() => setFaceRegisterOpen(true)} onBiometricRegister={handleBiometricRegister} onUpdateSecondaryEmail={handleUpdateSecondaryEmail} onUpdateFaceVerification={handleUpdateFaceVerification} />;
+        return <ProfileTab userDetails={userDetails} userId={userId} isActive={activeTab === "profile"} onLogout={handleLogout} onFaceRegister={() => setFaceRegisterOpen(true)} onBiometricRegister={handleBiometricRegister} onUpdateSecondaryEmail={handleUpdateSecondaryEmail} onUpdateFaceVerification={handleUpdateFaceVerification} />;
       case "admin":
         return <AdminTab userId={userId} />;
       default:
@@ -1967,33 +2009,45 @@ function ActivityPage() {
   return (
     <div className="fixed inset-0 flex flex-col bg-[#F9F6F4] overflow-hidden">
       <OfflineBanner isOnline={isOnline} isSyncing={isSyncing} pendingCount={pendingCount} />
-      {loading && posts.length === 0 && (
-        <div className="absolute inset-0 z-50 bg-white flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-gray-200 border-t-[#CC1318] rounded-full animate-spin" />
-            <p className="text-[12px] text-gray-400">Loading...</p>
+
+      {/* Skeleton loader — only shown on very first load before any data */}
+      {loading && posts.length === 0 && !error && (
+        <div className="absolute inset-0 z-50 bg-[#F9F6F4] flex flex-col overflow-hidden pointer-events-none">
+          {/* Header skeleton */}
+          <div className="h-44 bg-[var(--brand-primary)] opacity-90 flex-shrink-0" />
+          {/* Card skeleton */}
+          <div className="mx-4 -mt-5 bg-white rounded-[22px] shadow-lg p-4 flex-shrink-0">
+            <div className="flex justify-between items-center mb-3">
+              <div className="h-3 w-24 bg-gray-100 rounded-full animate-pulse" />
+              <div className="h-5 w-16 bg-gray-100 rounded-full animate-pulse" />
+            </div>
+            <div className="h-8 w-32 bg-gray-100 rounded-xl animate-pulse mb-2" />
+            <div className="h-3 w-48 bg-gray-100 rounded-full animate-pulse" />
+          </div>
+          {/* Grid skeleton */}
+          <div className="px-4 pt-6 grid grid-cols-2 gap-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white rounded-[18px] p-4 h-24 animate-pulse">
+                <div className="w-9 h-9 rounded-[10px] bg-gray-100 mb-3" />
+                <div className="h-3 w-20 bg-gray-100 rounded-full mb-1.5" />
+                <div className="h-2.5 w-16 bg-gray-100 rounded-full" />
+              </div>
+            ))}
           </div>
         </div>
       )}
+
       {error && !loading && (
         <div className="absolute inset-0 z-50 bg-white flex items-center justify-center p-6">
           <div className="bg-[#FEF0F0] border border-red-200 rounded-2xl px-4 py-3 text-sm text-[#CC1318] text-center">{error}</div>
         </div>
       )}
 
+      {/* Tab content — CSS fade instead of framer-motion for better perf */}
       <div className="flex-1 overflow-hidden relative">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2, ease: "easeInOut" }}
-            className="h-full"
-          >
-            {renderActiveTab()}
-          </motion.div>
-        </AnimatePresence>
+        <div key={activeTab} className="h-full animate-in fade-in duration-150">
+          {renderActiveTab()}
+        </div>
       </div>
 
       {/* Floating Today's Activity Panel */}
@@ -2231,7 +2285,7 @@ function ActivityPage() {
             <p className="text-[13px] text-gray-600 mb-4 leading-relaxed">
               Please look at the camera and take 3 clear photos of your face from different angles to complete the registration.
             </p>
-            <Camera
+            <CameraLazy
               mode="register"
               onRegisterAction={handleFaceRegister}
               onCaptureAction={() => { }}
