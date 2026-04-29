@@ -1,7 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -25,6 +23,9 @@ import OfflineBanner from "@/components/OfflineBanner";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { useSwipeToRefresh } from "@/hooks/useSwipeToRefresh";
+import { haptic } from "@/lib/haptics";
+import { usePreferences } from "@/lib/preferences";
+import { playNotificationSound } from "@/lib/notification-sound";
 
 // ── Lazy-load heavy dialog components — only parsed/bundled when first opened ─
 const ActivityDialog        = dynamic(() => import("@/components/dashboard-dialog"),    { ssr: false });
@@ -561,7 +562,7 @@ function HomeTab({
                       <p className="text-[11px] text-gray-400 truncate mt-0.5">{log.Location || "—"}</p>
                     </div>
                     <p className="text-[11px] font-semibold text-gray-500 flex-shrink-0">
-                      {new Date(log.date_created).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(log.date_created).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: true })}
                     </p>
                   </div>
                 );
@@ -1351,27 +1352,6 @@ function ProfileTab({
             </div>
           </button>
 
-          {/* Install App Button - Only show if installable and not installed */}
-          {isInstallable && !isInstalled && (
-            <button
-              onClick={handleInstallClick}
-              className="w-full flex items-center gap-4 bg-gradient-to-r from-purple-600 to-purple-500 rounded-2xl border border-purple-400 px-4 py-4 text-left hover:from-purple-700 hover:to-purple-600 active:scale-[0.98] transition-all group shadow-lg shadow-purple-200"
-            >
-              <div className="w-11 h-11 rounded-[14px] bg-white/20 flex items-center justify-center flex-shrink-0 group-hover:bg-white/30 transition-colors">
-                <Download size={20} className="text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-white">Install App</p>
-                <p className="text-[11px] text-white/80 mt-0.5">
-                  {isIOS ? "Add to Home Screen (iOS guide)" : "Add to home screen for offline access"}
-                </p>
-              </div>
-              <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0 group-hover:bg-white/30 transition-colors">
-                <ArrowRight size={13} className="text-white" />
-              </div>
-            </button>
-          )}
-
           {/* iOS Step-by-step guide modal */}
           {showIOSGuide && (
             <div
@@ -1422,21 +1402,21 @@ function ProfileTab({
             </div>
           )}
 
-          {/* Already Installed Badge */}
-          {isInstalled && (
-            <div className="w-full flex items-center gap-4 bg-green-50 rounded-2xl border border-green-200 px-4 py-4">
-              <div className="w-11 h-11 rounded-[14px] bg-green-100 flex items-center justify-center flex-shrink-0">
-                <Download size={20} className="text-green-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-green-800">App Installed</p>
-                <p className="text-[11px] text-green-600 mt-0.5">You're using the installed app</p>
-              </div>
-            </div>
-          )}
-
           <TimesheetNavCard userId={userId} />
         </div>
+
+        {/* ── Customize (App Preferences) ── */}
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Customize</p>
+        <CustomizePanel />
+
+        {/* ── Permanent Install App Section ── */}
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Install App on Phone</p>
+        <InstallAppSection
+          isInstalled={isInstalled}
+          isIOS={isIOS}
+          isInstallable={isInstallable}
+          onInstallClick={handleInstallClick}
+        />
 
         {/* Device Sessions */}
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Logged Devices</p>
@@ -1508,6 +1488,166 @@ function ProfileTab({
   );
 }
 
+// ── Customize Panel (User Preferences) ───────────────────────────────────────
+
+function CustomizePanel() {
+  const { prefs, setPref } = usePreferences();
+  const items: { key: keyof typeof prefs; label: string; desc: string; emoji: string; sample?: () => void }[] = [
+    { key: "haptics",             label: "Haptic Feedback",       desc: "Vibrate on taps and actions",          emoji: "📳", sample: () => haptic("medium") },
+    { key: "notificationSound",   label: "Notification Sound",    desc: "Play a chime for new alerts",          emoji: "🔔", sample: () => playNotificationSound() },
+    { key: "notificationVibrate", label: "Vibrate on Notification", desc: "Buzz when a new notification arrives", emoji: "📲" },
+    { key: "pushNotifications",   label: "Push Notifications",    desc: "Receive alerts from the server",       emoji: "📨" },
+    { key: "showWeather",         label: "Weather on Home",       desc: "Display the weather card",             emoji: "🌤️" },
+    { key: "swipeToRefresh",      label: "Swipe to Refresh",      desc: "Pull down to reload data",             emoji: "↕️" },
+  ];
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm mb-5">
+      {items.map((it, i) => (
+        <div
+          key={String(it.key)}
+          className={`flex items-center gap-4 px-4 py-3.5 ${i < items.length - 1 ? "border-b border-gray-50" : ""}`}
+        >
+          <div className="w-10 h-10 rounded-[12px] bg-gray-50 flex items-center justify-center flex-shrink-0 text-[18px]">
+            {it.emoji}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-gray-800">{it.label}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{it.desc}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !prefs[it.key];
+              setPref(it.key, next);
+              if (next && it.sample) {
+                // small delay so the pref is read by the sampler
+                setTimeout(() => it.sample && it.sample(), 50);
+              }
+              haptic("light");
+            }}
+            aria-pressed={prefs[it.key]}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0 ${prefs[it.key] ? "bg-[var(--brand-primary)]" : "bg-gray-200"}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${prefs[it.key] ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Install App Section (permanent, platform-aware) ──────────────────────────
+
+function InstallAppSection({
+  isInstalled,
+  isIOS,
+  isInstallable,
+  onInstallClick,
+}: {
+  isInstalled: boolean;
+  isIOS: boolean;
+  isInstallable: boolean;
+  onInstallClick: () => void;
+}) {
+  const [platform, setPlatform] = useState<"ios" | "android">(isIOS ? "ios" : "android");
+
+  useEffect(() => {
+    setPlatform(isIOS ? "ios" : "android");
+  }, [isIOS]);
+
+  const iosSteps = [
+    { icon: "🌐", text: "Open this site in Safari (not Chrome)" },
+    { icon: "⬆️", text: "Tap the Share button at the bottom of the screen" },
+    { icon: "➕", text: 'Scroll down and tap "Add to Home Screen"' },
+    { icon: "✅", text: 'Tap "Add" — the Biolog icon will appear on your home screen' },
+  ];
+
+  const androidSteps = [
+    { icon: "🌐", text: "Open this site in Chrome (or any modern browser)" },
+    { icon: "⋮",  text: "Tap the three-dot menu in the top-right corner" },
+    { icon: "📲", text: 'Tap "Install app" or "Add to Home screen"' },
+    { icon: "✅", text: "Confirm — Biolog opens like a real app, even offline" },
+  ];
+
+  const steps = platform === "ios" ? iosSteps : androidSteps;
+
+  if (isInstalled) {
+    return (
+      <div className="bg-white rounded-2xl border border-green-100 overflow-hidden mb-5 shadow-sm">
+        <div className="flex items-center gap-4 px-4 py-4 bg-gradient-to-r from-green-50 to-emerald-50">
+          <div className="w-11 h-11 rounded-[14px] bg-green-100 flex items-center justify-center flex-shrink-0">
+            <Download size={20} className="text-green-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-green-800">App Installed</p>
+            <p className="text-[11px] text-green-600 mt-0.5">You're using the installed Biolog app — long-press the icon for shortcuts.</p>
+          </div>
+        </div>
+        <div className="px-4 py-3 bg-white">
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            <span className="font-semibold text-gray-600">Tip:</span> Long-press the Biolog icon on your phone to quickly create an attendance or site visit without opening the app first.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-5 shadow-sm">
+      {/* Tabs */}
+      <div className="flex border-b border-gray-100">
+        {(["android", "ios"] as const).map((p) => (
+          <button
+            key={p}
+            onClick={() => { setPlatform(p); haptic("light"); }}
+            className={`flex-1 py-3 text-[12px] font-bold transition-all ${platform === p ? "text-[var(--brand-primary)] bg-[var(--brand-light)]" : "text-gray-400"}`}
+          >
+            {p === "ios" ? "📱 iPhone / iPad" : "🤖 Android"}
+          </button>
+        ))}
+      </div>
+
+      {/* CTA Button (only when supported by the browser) */}
+      {isInstallable && (
+        <div className="p-4 border-b border-gray-100">
+          <button
+            onClick={onInstallClick}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-purple-500 text-white text-[13px] font-bold shadow-md shadow-purple-200 active:scale-[0.98] transition-all"
+          >
+            <Download size={16} />
+            {platform === "ios" ? "Show Install Steps" : "Install App Now"}
+          </button>
+        </div>
+      )}
+
+      {/* Step-by-step */}
+      <div className="p-4">
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">
+          {platform === "ios" ? "Install on iPhone / iPad" : "Install on Android"}
+        </p>
+        <div className="flex flex-col gap-2.5">
+          {steps.map((s, i) => (
+            <div key={i} className="flex items-start gap-3 bg-gray-50 rounded-2xl p-3 border border-gray-100">
+              <div className="w-7 h-7 rounded-full bg-[var(--brand-primary)] flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold">
+                {i + 1}
+              </div>
+              <p className="text-[12px] text-gray-700 leading-relaxed flex-1">
+                <span className="mr-1.5">{s.icon}</span>{s.text}
+              </p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-400 text-center mt-3 leading-relaxed">
+          {platform === "ios"
+            ? "iOS only supports installation from Safari — not Chrome or other browsers."
+            : "After installing, long-press the Biolog icon for quick shortcuts to Attendance and Site Visit."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 function ActivityPage() {
@@ -1532,21 +1672,31 @@ function ActivityPage() {
   const [createAttendanceOpen, setCreateAttendanceOpen] = useState(false);
   const [createSalesAttendanceOpen, setCreateSalesAttendanceOpen] = useState(false);
   const [createMeetingOpen, setCreateMeetingOpen] = useState(false);
+
+  // Handle PWA shortcut launches (?shortcut=attendance | sitevisit)
+  useEffect(() => {
+    const shortcut = searchParams?.get("shortcut");
+    if (!shortcut) return;
+    if (shortcut === "attendance") {
+      setActiveTab("home");
+      setCreateAttendanceOpen(true);
+      haptic("medium");
+    } else if (shortcut === "sitevisit") {
+      setActiveTab("home");
+      setCreateSalesAttendanceOpen(true);
+      haptic("medium");
+    }
+    // Clear the param so refresh doesn't reopen
+    router.replace("/activity-planner");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [faceRegisterOpen, setFaceRegisterOpen] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [biometricRegistering, setBiometricRegistering] = useState(false);
   const [startHour, setStartHour] = useState(8);
 
-  useEffect(() => {
-    fetch("/api/admin/settings")
-      .then(r => r.json())
-      .then(data => {
-        if (data?.officeStartTime) {
-          setStartHour(parseInt(data.officeStartTime.split(":")[0]));
-        }
-      });
-  }, []);
-
+  // Office start hour comes from the same /api/admin/settings call already made
+  // higher up in the component — no need to refetch it here.
 
   const [formData, setFormData] = useState<FormData>({
     ReferenceID: "", Email: "", Type: "", Status: "", PhotoURL: "", Remarks: "", TSM: "",
@@ -1577,44 +1727,63 @@ function ActivityPage() {
 
   useEffect(() => {
     if (!queryUserId) { setError("User ID is missing."); setLoading(false); return; }
+
+    const applyData = (data: any) => {
+      setUserDetails({
+        UserId: data._id ?? "", Firstname: data.Firstname ?? "", Lastname: data.Lastname ?? "",
+        Email: data.Email ?? "", Role: data.Role ?? "", Department: data.Department ?? "",
+        Company: data.Company ?? "", ReferenceID: data.ReferenceID ?? "",
+        profilePicture: data.profilePicture ?? "", faceDescriptors: data.faceDescriptors ?? null,
+        credentials: data.credentials ?? [],
+        twoFactorEnabled: data.twoFactorEnabled ?? false,
+        SecondaryEmail: data.SecondaryEmail ?? "",
+        pin: data.pin ?? "",
+        TSM: data.TSM ?? "",
+        Directories: data.Directories ?? [],
+        permissions: data.permissions ?? { canCreateAttendance: true, canCreateSiteVisit: true },
+        faceVerificationEnabled: data.faceVerificationEnabled ?? true,
+      });
+      setError(null);
+    };
+
+    let cancelled = false;
+    setLoading(true);
+
+    // ── Stale-while-revalidate: paint cached profile instantly, refresh in background ──
     (async () => {
       try {
-        setLoading(true);
-        let data: any = null;
+        const { getCachedUser, cacheUser } = await import("@/lib/offline-auth");
+        const cached = await getCachedUser(queryUserId);
+        if (cached && !cancelled) {
+          applyData(cached);
+          setLoading(false); // shell can render immediately
+        }
+
+        // Background refresh from network
         try {
           const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`);
           if (!res.ok) throw new Error("Failed to fetch user data");
-          data = await res.json();
-          // Cache for offline use
-          try {
-            const { cacheUser } = await import("@/lib/offline-auth");
-            await cacheUser(queryUserId, data);
-          } catch { /* silent */ }
+          const fresh = await res.json();
+          if (!cancelled) {
+            applyData(fresh);
+            setLoading(false);
+          }
+          cacheUser(queryUserId, fresh).catch(() => {});
         } catch {
-          // Network failed — try the offline cache
-          const { getCachedUser } = await import("@/lib/offline-auth");
-          const cached = await getCachedUser(queryUserId);
-          if (!cached) throw new Error("Failed to fetch user data");
-          data = cached;
+          if (!cached && !cancelled) {
+            setError("Failed to load user data.");
+            setLoading(false);
+          }
         }
-        setUserDetails({
-          UserId: data._id ?? "", Firstname: data.Firstname ?? "", Lastname: data.Lastname ?? "",
-          Email: data.Email ?? "", Role: data.Role ?? "", Department: data.Department ?? "",
-          Company: data.Company ?? "", ReferenceID: data.ReferenceID ?? "",
-          profilePicture: data.profilePicture ?? "", faceDescriptors: data.faceDescriptors ?? null,
-          credentials: data.credentials ?? [],
-          twoFactorEnabled: data.twoFactorEnabled ?? false,
-          SecondaryEmail: data.SecondaryEmail ?? "",
-          pin: data.pin ?? "",
-          TSM: data.TSM ?? "",
-          Directories: data.Directories ?? [],
-          permissions: data.permissions ?? { canCreateAttendance: true, canCreateSiteVisit: true },
-          faceVerificationEnabled: data.faceVerificationEnabled ?? true,
-        });
-        setError(null);
-      } catch { setError("Failed to load user data."); }
-      finally { setLoading(false); }
+      } catch {
+        if (!cancelled) {
+          setError("Failed to load user data.");
+          setLoading(false);
+        }
+      }
     })();
+
+    return () => { cancelled = true; };
   }, [queryUserId]);
 
   useEffect(() => {
@@ -1626,63 +1795,68 @@ function ActivityPage() {
     if (!userDetails) return;
     setLoading(true);
 
-    const buildParams = (page: number) => {
-      const params = new URLSearchParams();
-      params.append("page", page.toString());
-      params.append("limit", "50"); // smaller pages = faster first paint
-      params.append("role", userDetails.Role);
-      if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
-        params.append("referenceID", userDetails.ReferenceID);
+    // ── Stale-while-revalidate: paint cached logs instantly ──
+    try {
+      const { getCachedLogs } = await import("@/lib/offline-logs-cache");
+      const cached = await getCachedLogs();
+      if (cached.length > 0) {
+        setPosts(cached as unknown as ActivityLog[]);
+        setLoading(false); // user sees data immediately while we refresh
       }
-      if (dateCreatedFilterRange?.from) {
-        params.append("startDate", dateCreatedFilterRange.from.toISOString());
-        params.append("endDate", (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString());
-      }
-      return params;
-    };
+    } catch { /* silent */ }
 
     try {
-      // ── Page 1: show immediately so the UI isn't blank ──────────────────
-      const firstRes = await fetch(`/api/ModuleSales/Activity/FetchLog?${buildParams(1)}`);
+      const buildParams = (page: number) => {
+        const params = new URLSearchParams();
+        params.append("page", page.toString());
+        params.append("limit", "500"); // larger pages → fewer round-trips
+        params.append("role", userDetails.Role);
+        if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
+          params.append("referenceID", userDetails.ReferenceID);
+        }
+        if (dateCreatedFilterRange?.from) {
+          params.append("startDate", dateCreatedFilterRange.from.toISOString());
+          params.append("endDate", (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString());
+        }
+        return params;
+      };
+
+      // First page tells us how many total pages exist
+      const firstRes = await fetch(`/api/ModuleSales/Activity/FetchLog?${buildParams(1).toString()}`);
       if (!firstRes.ok) throw new Error("Failed to fetch logs");
       const firstData = await firstRes.json();
-      const firstPage: ActivityLog[] = firstData.data ?? [];
       const totalPages: number = firstData.pagination?.totalPages ?? 1;
+      let allLogs: ActivityLog[] = firstData.data ?? [];
 
-      setPosts(firstPage);   // ← render immediately
-      setLoading(false);     // ← hide spinner after first page
-
-      // ── Remaining pages: load silently in background ─────────────────────
-      if (totalPages > 1) {
-        let allLogs = [...firstPage];
-        for (let page = 2; page <= totalPages; page++) {
-          const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${buildParams(page)}`);
-          if (!res.ok) break;
-          const data = await res.json();
-          allLogs = allLogs.concat(data.data ?? []);
-          setPosts([...allLogs]); // update incrementally
-        }
-        // Cache the full dataset
-        try {
-          const { cacheLogs } = await import("@/lib/offline-logs-cache");
-          await cacheLogs(allLogs as any);
-        } catch { /* non-critical */ }
-      } else {
-        try {
-          const { cacheLogs } = await import("@/lib/offline-logs-cache");
-          await cacheLogs(firstPage as any);
-        } catch { /* non-critical */ }
-      }
-    } catch {
+      // Show first page immediately so the UI updates as soon as possible
+      setPosts(allLogs);
       setLoading(false);
-      // Network failed — load from offline cache
-      try {
-        const { getCachedLogs } = await import("@/lib/offline-logs-cache");
-        const cached = await getCachedLogs();
-        setPosts(cached.length > 0 ? (cached as unknown as ActivityLog[]) : []);
-      } catch {
-        setPosts([]);
+
+      // Fetch any remaining pages in PARALLEL instead of sequentially
+      if (totalPages > 1) {
+        const remaining = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) =>
+            fetch(`/api/ModuleSales/Activity/FetchLog?${buildParams(i + 2).toString()}`)
+              .then((r) => (r.ok ? r.json() : { data: [] }))
+              .catch(() => ({ data: [] }))
+          )
+        );
+        allLogs = remaining.reduce<ActivityLog[]>(
+          (acc, d) => acc.concat((d.data ?? []) as ActivityLog[]),
+          allLogs
+        );
+        setPosts(allLogs);
       }
+
+      // Cache for offline use (non-blocking)
+      import("@/lib/offline-logs-cache")
+        .then(({ cacheLogs }) => cacheLogs(allLogs as any))
+        .catch(() => {});
+    } catch {
+      // Network failed — keep cached posts already painted; if none, show empty
+      setPosts((prev) => (prev.length > 0 ? prev : []));
+    } finally {
+      setLoading(false);
     }
   }, [userDetails, dateCreatedFilterRange]);
 
@@ -1694,24 +1868,42 @@ function ActivityPage() {
   // ── Session timeout warning ───────────────────────────────────────────────
   const { showWarning: showSessionWarning, secondsLeft: sessionSecondsLeft, refresh: refreshSession, dismiss: dismissSessionWarning } = useSessionTimeout();
 
-  // ── Swipe to refresh (home tab) ───────────────────────────────────────────
+  // ── User preferences (haptics, sound, notifications, etc.) ───────────────
+  const { prefs: appPrefs } = usePreferences();
+
+  // ── Swipe to refresh (home tab) — disabled if user turned it off ─────────
   const { containerRef: swipeContainerRef, pullDistance, isRefreshing: isPullRefreshing } = useSwipeToRefresh(
-    async () => { await fetchAccountAction(); await fetchMeetings(); },
-    activeTab === "home"
+    async () => {
+      haptic("light");
+      await Promise.all([fetchAccountAction(), fetchMeetings()]);
+    },
+    activeTab === "home" && appPrefs.swipeToRefresh
   );
 
   // ── Push notifications init ───────────────────────────────────────────────
   useEffect(() => {
     if (!userDetails?.UserId) return;
+    if (!appPrefs.pushNotifications) return; // user opted out
     import("@/lib/push-notifications").then(({ initPushNotifications, onForegroundMessage }) => {
       initPushNotifications(userDetails.UserId).catch(() => {});
       const unsub = onForegroundMessage(({ title, body }) => {
         toast.info(`${title}: ${body}`, { duration: 6000 });
-        if ("vibrate" in navigator) navigator.vibrate([50, 30, 50]);
+        playNotificationSound();
+        if (appPrefs.notificationVibrate) haptic("warning");
       });
       return unsub;
     }).catch(() => {});
-  }, [userDetails?.UserId]);
+  }, [userDetails?.UserId, appPrefs.pushNotifications, appPrefs.notificationVibrate]);
+
+  // ── Play sound + vibrate when in-app notification count rises ────────────
+  const prevNotifCountRef = useRef(0);
+  useEffect(() => {
+    if (notifUnreadCount > prevNotifCountRef.current && prevNotifCountRef.current !== 0) {
+      playNotificationSound();
+      if (appPrefs.notificationVibrate) haptic("warning");
+    }
+    prevNotifCountRef.current = notifUnreadCount;
+  }, [notifUnreadCount, appPrefs.notificationVibrate]);
 
   const fetchMeetings = useCallback(async () => {
     if (!userDetails) return;
@@ -1733,8 +1925,8 @@ function ActivityPage() {
 
   useEffect(() => {
     if (!userDetails) return;
-    fetchAccountAction();
-    fetchMeetings();
+    // Run both fetches in parallel — they're independent.
+    Promise.all([fetchAccountAction(), fetchMeetings()]).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userDetails, dateCreatedFilterRange]);
 
@@ -1817,7 +2009,7 @@ function ActivityPage() {
         description: p.Remarks || "Meeting scheduled",
         location: p.Location || "",
         status: "Meeting",
-        date: new Date(p.StartDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        date: new Date(p.StartDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true }),
       };
     } else {
       return {
@@ -1826,7 +2018,7 @@ function ActivityPage() {
         description: p.Remarks || "No remarks",
         location: p.Location || "",
         status: p.Status || "",
-        date: new Date(p.date_created).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        date: new Date(p.date_created).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true }),
       };
     }
   }).sort((a, b) => new Date(b.id).getTime() - new Date(a.id).getTime()),
@@ -2124,8 +2316,7 @@ function ActivityPage() {
                 onClick={() => {
                   setActiveTab(item.id);
                   if (item.id === "profile") markNotifsRead();
-                  // Haptic feedback
-                  if ("vibrate" in navigator) navigator.vibrate(30);
+                  haptic("light");
                 }}
                 className={[
                   "flex-1 flex flex-col items-center gap-1 py-3 relative transition-all",
@@ -2161,6 +2352,7 @@ function ActivityPage() {
             {(userDetails?.Role === "SuperAdmin" || userDetails?.permissions?.canCreateAttendance || userDetails?.permissions?.canCreateSiteVisit) && (
               <button
                 onClick={() => {
+                  haptic("medium");
                   if (
                     userDetails?.Role === "SuperAdmin" ||
                     (userDetails?.permissions?.canCreateAttendance && userDetails?.permissions?.canCreateSiteVisit)
@@ -2343,7 +2535,7 @@ function MeetingDetailsDialog({ open, onOpenChange, meeting, usersMap }: {
                   {new Date(meeting.StartDate).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })}
                 </p>
                 <p className="text-[12px] text-gray-500">
-                  {new Date(meeting.StartDate).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })} – {new Date(meeting.EndDate).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}
+                  {new Date(meeting.StartDate).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: true })} – {new Date(meeting.EndDate).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: true })}
                 </p>
               </div>
             </div>
