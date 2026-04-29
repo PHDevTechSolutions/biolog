@@ -6,7 +6,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/utils/supabase";
+import { supabase as _supabase } from "@/utils/supabase";
+const supabase = _supabase!;
 
 export interface AppNotification {
   id: string;
