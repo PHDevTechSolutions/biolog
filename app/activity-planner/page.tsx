@@ -674,9 +674,22 @@ function CalendarTab({ currentMonth, calendarDays, usersMap, onEventClick, onMee
     if (!userDetails) return;
     setLoadingDate(true);
     try {
-      const date = new Date(dateKey);
-      const nextDay = new Date(date);
-      nextDay.setDate(nextDay.getDate() + 1);
+      // Parse the dateKey (YYYY-MM-DD) and create date range that covers full PH day (UTC+8)
+      // PH timezone is UTC+8, so PH midnight = UTC 16:00:00 (previous day)
+      const [year, month, day] = dateKey.split('-').map(Number);
+      
+      // For PH timezone (UTC+8):
+      // April 20 00:00:00 PH = April 19 16:00:00 UTC
+      // April 20 23:59:59 PH = April 20 15:59:59 UTC
+      
+      // Create UTC timestamps that correspond to PH local time boundaries
+      // We use Date.UTC which creates timestamp at that exact UTC moment
+      // Then we subtract nothing because we want UTC times that correspond to PH times
+      
+      // Actually simpler approach: just add 1 day range and let the client-side filter handle it
+      // The API will return logs, we filter by actual calendar date after
+      const startDate = new Date(Date.UTC(year, month - 1, day - 1, 16, 0, 0)); // PH midnight = UTC 4PM prev day
+      const endDate = new Date(Date.UTC(year, month - 1, day, 16, 0, 0));       // Next PH midnight = UTC 4PM same day
       
       const params = new URLSearchParams();
       params.append("page", "1");
@@ -685,8 +698,8 @@ function CalendarTab({ currentMonth, calendarDays, usersMap, onEventClick, onMee
       if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
         params.append("referenceID", userDetails.ReferenceID);
       }
-      params.append("startDate", date.toISOString());
-      params.append("endDate", nextDay.toISOString());
+      params.append("startDate", startDate.toISOString());
+      params.append("endDate", endDate.toISOString());
 
       // Fetch logs for date
       const logsRes = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
