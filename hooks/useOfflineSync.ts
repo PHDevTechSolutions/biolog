@@ -35,14 +35,19 @@ export function useOfflineSync(onSyncComplete?: () => void) {
   }, []);
 
   const syncNow = useCallback(async () => {
-    if (syncingRef.current || !navigator.onLine) return;
+    if (syncingRef.current || !navigator.onLine) {
+      console.log("[sync] Skipped - already syncing or offline");
+      return;
+    }
 
     syncingRef.current = true;
     setIsSyncing(true);
+    console.log("[sync] Starting sync...");
 
     let logs;
     try {
       logs = await getAllPendingLogs();
+      console.log(`[sync] Found ${logs.length} pending logs`);
     } catch (err) {
       console.error("[sync] Failed to read pending logs:", err);
       syncingRef.current = false;
@@ -51,6 +56,7 @@ export function useOfflineSync(onSyncComplete?: () => void) {
     }
 
     if (logs.length === 0) {
+      console.log("[sync] No pending logs to sync");
       syncingRef.current = false;
       setIsSyncing(false);
       return;
@@ -157,19 +163,38 @@ export function useOfflineSync(onSyncComplete?: () => void) {
     const handleOnline  = () => { setIsOnline(true);  syncNow(); };
     const handleOffline = () => setIsOnline(false);
     const handleSWSync  = () => syncNow();
+    
+    // ── Sync when app becomes visible (user returns to app) ─────────────────
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        // Small delay to let network stabilize
+        setTimeout(() => syncNow(), 1000);
+      }
+    };
+    
+    // ── Periodic sync retry every 30 seconds when online ───────────────────
+    const periodicSyncInterval = setInterval(() => {
+      if (navigator.onLine && pendingCount > 0 && !syncingRef.current) {
+        syncNow();
+      }
+    }, 30000);
 
     window.addEventListener("online",       handleOnline);
     window.addEventListener("offline",      handleOffline);
     window.addEventListener("acculog:sync", handleSWSync);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
+    // Initial sync on mount
     if (navigator.onLine) syncNow();
 
     return () => {
       window.removeEventListener("online",       handleOnline);
       window.removeEventListener("offline",      handleOffline);
       window.removeEventListener("acculog:sync", handleSWSync);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearInterval(periodicSyncInterval);
     };
-  }, [syncNow, refreshCount]);
+  }, [syncNow, refreshCount, pendingCount]);
 
   return { pendingCount, isOnline, isSyncing, syncNow };
 }

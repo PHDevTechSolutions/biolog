@@ -1,7 +1,7 @@
 // public/service-worker.js
-// Acculog PWA — Service Worker v10 - Fixed offline support
+// Acculog PWA — Service Worker v11 - Fixed offline navigation
 
-const CACHE_NAME     = "acculog-cache-v10";   // bump version → forces re-install
+const CACHE_NAME     = "acculog-cache-v11";   // bump version → forces re-install
 const OSM_CACHE_NAME = "acculog-osm-tiles-v1";
 const SYNC_TAG       = "sync-activity-logs";
 
@@ -9,6 +9,8 @@ const SYNC_TAG       = "sync-activity-logs";
 
 const STATIC_ASSETS = [
   "/",
+  "/Login",
+  "/activity-planner",
   "/manifest.json",
   "/icon-192.png",
   "/icon-512.png",
@@ -288,38 +290,66 @@ async function runtimeCacheFirst(request, cacheName) {
  */
 async function navigateWithFallback(request) {
   const cache = await caches.open(CACHE_NAME);
+  const url = new URL(request.url);
+  const pathname = url.pathname;
   
   try {
     // Try network first for fresh content
     const networkResponse = await fetch(request);
     if (networkResponse.ok) {
       // Cache successful navigation responses for offline use
-      // Clone the response before caching
       const responseClone = networkResponse.clone();
-      
-      // Only cache same-origin successful HTML responses
       if (request.url.startsWith(self.location.origin)) {
         cache.put(request, responseClone);
       }
       return networkResponse;
     }
   } catch (err) {
-    // Network failed - try to serve from cache
+    // Network failed - will serve from cache below
+    console.log("[SW] Network failed for navigation, serving from cache:", pathname);
   }
   
-  // Try to serve the cached version of this specific page
-  const cachedResponse = await cache.match(request);
-  if (cachedResponse) return cachedResponse;
+  // Try to serve the exact cached page first
+  let cachedResponse = await cache.match(request);
+  if (cachedResponse) {
+    console.log("[SW] Serving exact cached page:", pathname);
+    return cachedResponse;
+  }
   
-  // Fall back to the main app shell (home page)
+  // For login page specifically
+  if (pathname === "/Login" || pathname === "/login") {
+    const loginPage = await cache.match("/Login");
+    if (loginPage) {
+      console.log("[SW] Serving cached /Login page");
+      return loginPage;
+    }
+  }
+  
+  // For activity-planner
+  if (pathname === "/activity-planner") {
+    const plannerPage = await cache.match("/activity-planner");
+    if (plannerPage) {
+      console.log("[SW] Serving cached /activity-planner page");
+      return plannerPage;
+    }
+  }
+  
+  // Fall back to the root shell
   const shell = await cache.match("/");
-  if (shell) return shell;
+  if (shell) {
+    console.log("[SW] Serving cached root shell");
+    return shell;
+  }
   
-  // Last resort - try the start URL from manifest
-  const startUrl = await cache.match("/activity-planner");
-  if (startUrl) return startUrl;
+  // Last resort - try other cached pages
+  const loginFallback = await cache.match("/Login");
+  if (loginFallback) return loginFallback;
+  
+  const plannerFallback = await cache.match("/activity-planner");
+  if (plannerFallback) return plannerFallback;
   
   // If nothing is cached, return offline error
+  console.error("[SW] No cached pages available!");
   return new Response(
     `<!DOCTYPE html>
     <html>
@@ -327,7 +357,8 @@ async function navigateWithFallback(request) {
     <body style="font-family:sans-serif;text-align:center;padding:50px;">
       <h1>You're Offline</h1>
       <p>Please check your internet connection and try again.</p>
-      <button onclick="location.reload()">Retry</button>
+      <p style="color:#666;font-size:12px;margin-top:20px;">The app needs to be loaded once while online.</p>
+      <button onclick="location.reload()" style="padding:10px 20px;margin-top:20px;cursor:pointer;">Retry</button>
     </body>
     </html>`,
     { status: 503, headers: { "Content-Type": "text/html" } }

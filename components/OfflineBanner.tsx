@@ -21,9 +21,10 @@ interface Props {
   isOnline:     boolean;
   isSyncing:    boolean;
   pendingCount: number;
+  onSyncNow?:   () => void; // Optional manual sync trigger
 }
 
-export default function OfflineBanner({ isOnline, isSyncing, pendingCount }: Props) {
+export default function OfflineBanner({ isOnline, isSyncing, pendingCount, onSyncNow }: Props) {
   const [showSyncDone, setShowSyncDone] = useState(false);
   const prevSyncingRef = typeof window !== "undefined"
     ? (window as any).__prevSyncing as boolean | undefined
@@ -70,7 +71,15 @@ export default function OfflineBanner({ isOnline, isSyncing, pendingCount }: Pro
     return (
       <div className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-2 bg-[#A0611A] text-white py-2 px-4 text-[12px] font-semibold">
         <RefreshCw size={13} />
-        Uploading {pendingCount} queued record{pendingCount !== 1 ? "s" : ""}…
+        <span>Uploading {pendingCount} queued record{pendingCount !== 1 ? "s" : ""}…</span>
+        {onSyncNow && (
+          <button 
+            onClick={onSyncNow}
+            className="ml-2 bg-white/20 hover:bg-white/30 rounded-full px-2 py-0.5 text-[11px] transition-colors"
+          >
+            Sync Now
+          </button>
+        )}
       </div>
     );
   }

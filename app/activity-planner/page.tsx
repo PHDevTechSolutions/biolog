@@ -2712,7 +2712,7 @@ function ActivityPage() {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-[#F9F6F4] overflow-hidden">
-      <OfflineBanner isOnline={isOnline} isSyncing={isSyncing} pendingCount={pendingCount} />
+      <OfflineBanner isOnline={isOnline} isSyncing={isSyncing} pendingCount={pendingCount} onSyncNow={syncNow} />
 
       {/* Skeleton loader — only shown on very first load before any data */}
       {loading && posts.length === 0 && !error && (
