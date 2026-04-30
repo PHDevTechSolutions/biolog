@@ -2066,7 +2066,7 @@ function ActivityPage() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ version?: string; timestamp?: string }>({});
   const [isUpdating, setIsUpdating] = useState(false);
-  const wbRef = useRef<any>(null);
+  const dismissedVersionRef = useRef<string | null>(null);
 
   // Check for PWA updates - Listen to existing service worker registration
   useEffect(() => {
@@ -2079,20 +2079,40 @@ function ActivityPage() {
       refreshing = true;
       setIsUpdating(false);
       setUpdateAvailable(false);
+      // Clear dismissed version on successful update
+      try { localStorage.removeItem('acculog_dismissed_version'); } catch {}
       window.location.reload();
     };
+
+    // Get dismissed version from localStorage
+    try {
+      dismissedVersionRef.current = localStorage.getItem('acculog_dismissed_version');
+    } catch {}
 
     const checkForUpdates = async () => {
       try {
         const registration = await navigator.serviceWorker.ready;
         
+        // Generate a version identifier from the waiting SW script URL
+        const getVersionId = () => {
+          if (registration.waiting) {
+            // Use the waiting SW URL or timestamp as version identifier
+            return registration.waiting.scriptURL + '_' + Date.now();
+          }
+          return null;
+        };
+
         // Check if there's a waiting service worker
         if (registration.waiting) {
-          setUpdateAvailable(true);
-          setUpdateInfo({
-            version: 'New Version',
-            timestamp: new Date().toLocaleString('en-PH')
-          });
+          const currentVersion = getVersionId();
+          // Only show if this version hasn't been dismissed
+          if (currentVersion && currentVersion !== dismissedVersionRef.current) {
+            setUpdateAvailable(true);
+            setUpdateInfo({
+              version: 'New Version',
+              timestamp: new Date().toLocaleString('en-PH')
+            });
+          }
         }
 
         // Listen for new waiting service workers
@@ -2103,11 +2123,15 @@ function ActivityPage() {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               // New version available
-              setUpdateAvailable(true);
-              setUpdateInfo({
-                version: 'New Version',
-                timestamp: new Date().toLocaleString('en-PH')
-              });
+              const newVersionId = newWorker.scriptURL + '_' + Date.now();
+              // Only show if this version hasn't been dismissed
+              if (newVersionId !== dismissedVersionRef.current) {
+                setUpdateAvailable(true);
+                setUpdateInfo({
+                  version: 'New Version',
+                  timestamp: new Date().toLocaleString('en-PH')
+                });
+              }
             }
           });
         });
@@ -2142,6 +2166,9 @@ function ActivityPage() {
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
       
+      // Clear dismissed version on update
+      try { localStorage.removeItem('acculog_dismissed_version'); } catch {}
+      
       // Reload will happen automatically via controllerchange event
       // Fallback reload after 2 seconds if controllerchange doesn't fire
       setTimeout(() => {
@@ -2155,6 +2182,12 @@ function ActivityPage() {
 
   const dismissUpdate = () => {
     setUpdateAvailable(false);
+    // Save this version as dismissed so it doesn't show again
+    try {
+      const versionToDismiss = updateInfo.timestamp || Date.now().toString();
+      localStorage.setItem('acculog_dismissed_version', 'dismissed_' + versionToDismiss);
+      dismissedVersionRef.current = 'dismissed_' + versionToDismiss;
+    } catch {}
   };
 
   const [formData, setFormData] = useState<FormData>({
@@ -2594,7 +2627,25 @@ function ActivityPage() {
 
       if (!res.ok) throw new Error("Failed to save biometrics");
       
-      toast.success("Biometrics registered successfully!");
+      // 3. Also cache credentials for offline login (biometrics doesn't work offline)
+      // We need to ask user for a backup PIN for offline use
+      const offlinePin = prompt("Set a 6-digit PIN for offline login (optional):\n\nNote: Biometric login requires internet. This PIN will be used when you're offline.");
+      if (offlinePin && offlinePin.length === 6 && /^\d{6}$/.test(offlinePin)) {
+        try {
+          const { cacheCredential } = await import("@/lib/offline-auth");
+          await cacheCredential({
+            email: userDetails.Email,
+            secret: offlinePin,
+            isPinLogin: true,
+            userId: userId,
+          });
+          toast.success("Biometrics + Offline PIN registered!");
+        } catch {
+          toast.success("Biometrics registered! (Offline PIN not saved)");
+        }
+      } else {
+        toast.success("Biometrics registered successfully!");
+      }
       
       // Refresh user details
       const userRes = await fetch(`/api/user?id=${encodeURIComponent(userId)}`);

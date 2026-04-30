@@ -517,6 +517,12 @@ export function LoginForm({
   );
 
   const handleBiometricLogin = useCallback(async () => {
+    // Biometric login requires internet - check first
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Biometric login requires internet. Please use Email/PIN to login offline.");
+      return;
+    }
+    
     setBiometricLoading(true);
     let deviceId = getDeviceId();
     try {
@@ -814,6 +820,9 @@ export function LoginForm({
                       <><Fingerprint size={18} className="text-brand-primary" />Login with Fingerprint</>
                     )}
                   </button>
+                  <p className="text-[11px] text-gray-400 text-center -mt-1">
+                    Fingerprint login requires internet. Use Email/PIN when offline.
+                  </p>
 
                   {/* ── SIGN UP BUTTON ── */}
                   <div className="flex items-center justify-center gap-2 mt-2">
