@@ -10,7 +10,7 @@ import ProtectedPageWrapper from "@/components/protected-page-wrapper";
 import { AnimatePresence, motion, useInView } from "framer-motion";
 import { toast } from "sonner";
 import { type DateRange } from "react-day-picker";
-import { MapPin, X, CalendarCheck, ChevronLeft, ChevronRight, ArrowLeft, Building2, Home, BarChart3, User, LogIn, LogOut, TrendingUp, Plus, FileSpreadsheet, CalendarIcon, Clock, Megaphone, ChevronRight as ArrowRight, Power, Cloud, CloudUpload, WifiOff, Sun, CloudRain, CloudLightning, Info, Fingerprint, Smartphone, Laptop, Globe, ShieldCheck, Trash2, Settings, Users, ShieldAlert, Download, Loader2 } from "lucide-react";
+import { MapPin, X, CalendarCheck, ChevronLeft, ChevronRight, ArrowLeft, Building2, Home, BarChart3, User, LogIn, LogOut, TrendingUp, Plus, FileSpreadsheet, CalendarIcon, Clock, Megaphone, ChevronRight as ArrowRight, Power, Cloud, CloudUpload, WifiOff, Sun, CloudRain, CloudLightning, Info, Fingerprint, Smartphone, Laptop, Globe, ShieldCheck, Trash2, Settings, Users, ShieldAlert, Download, Loader2, FileDown } from "lucide-react";
 
 import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { getAllPendingLogs, removePendingLog, type PendingLog } from "@/lib/offline-store";
@@ -547,11 +547,6 @@ function HomeTab({
         <div className="grid grid-cols-2 gap-3 mb-5">
           {(userDetails?.Role === "Admin" || userDetails?.Role === "SuperAdmin") && (
             <>
-              <button onClick={() => router.push(`/admin/attendance-summary${userId ? `?id=${encodeURIComponent(userId)}` : ""}`)} className="bg-white rounded-[18px] p-4 text-left border border-gray-100 hover:border-gray-200 hover:bg-gray-50 active:scale-[0.97] transition-all">
-                <div className="w-9 h-9 rounded-[10px] bg-[#EEF7F2] flex items-center justify-center mb-3 border border-gray-100"><FileSpreadsheet size={18} className="text-[#1A7A4A]" /></div>
-                <p className="text-gray-800 text-[13px] font-semibold">Reports Summary</p>
-                <p className="text-gray-400 text-[11px] mt-0.5">Payroll export</p>
-              </button>
               <button onClick={() => router.push(`/admin/tickets${userId ? `?id=${encodeURIComponent(userId)}` : ""}`)} className="bg-white rounded-[18px] p-4 text-left border border-gray-100 hover:border-gray-200 hover:bg-gray-50 active:scale-[0.97] transition-all">
                 <div className="w-9 h-9 rounded-[10px] bg-[#E6F1FB] flex items-center justify-center mb-3 border border-gray-100"><ShieldAlert size={18} className="text-[#185FA5]" /></div>
                 <p className="text-gray-800 text-[13px] font-semibold">Concerns</p>
@@ -1270,16 +1265,176 @@ function CalendarTab({ currentMonth, calendarDays, usersMap, onEventClick, onMee
 
 // ── Reports Tab ───────────────────────────────────────────────────────────────
 
-function ReportsTab({ monthlyStats, allLogs, userId }: {
+function ReportsTab({ monthlyStats, allLogs, userId, userDetails }: {
   monthlyStats: { present: number; absent: number; visits: number; total: number };
   allLogs: ActivityLog[];
   userId: string | null | undefined;
+  userDetails: UserDetails | null;
 }) {
   const presentRate = monthlyStats.total > 0 ? Math.round((monthlyStats.present / monthlyStats.total) * 100) : 0;
   const loginCount = allLogs.filter((l) => l.Status === "Login").length;
   const logoutCount = allLogs.filter((l) => l.Status === "Logout").length;
   const visitCount = allLogs.filter((l) => l.Type === "Client Visit").length;
   const router = useRouter();
+
+  // Export state
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [emailFilter, setEmailFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [allEmails, setAllEmails] = useState<string[]>([]);
+
+  // Fetch all unique emails for autocomplete
+  useEffect(() => {
+    const fetchEmails = async () => {
+      try {
+        const params = new URLSearchParams();
+        params.append("role", userDetails?.Role || "User");
+        if (userDetails?.Role !== "SuperAdmin" && userDetails?.Role !== "Human Resources") {
+          params.append("referenceID", userDetails?.ReferenceID || "");
+        }
+        const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          const emails = new Set((data.data || []).map((log: ActivityLog) => log.Email));
+          setAllEmails(Array.from(emails) as string[]);
+        }
+      } catch {
+        setAllEmails([]);
+      }
+    };
+    fetchEmails();
+  }, [userDetails]);
+
+  // Preview export count
+  const previewExport = async () => {
+    if (!userDetails) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.append("page", "1");
+      params.append("limit", "10000");
+      params.append("role", userDetails.Role);
+      if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
+        params.append("referenceID", userDetails.ReferenceID);
+      }
+      if (dateRange?.from) {
+        params.append("startDate", dateRange.from.toISOString());
+        params.append("endDate", (dateRange.to ?? dateRange.from).toISOString());
+      }
+      const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        let logs = data.data || [];
+        // Filter by email on client side
+        if (emailFilter) {
+          logs = logs.filter((log: ActivityLog) => log.Email.toLowerCase() === emailFilter.toLowerCase());
+        }
+        setPreviewCount(logs.length);
+      } else {
+        setPreviewCount(0);
+      }
+    } catch {
+      setPreviewCount(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Export to Excel
+  const exportToExcel = async () => {
+    if (!userDetails) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.append("page", "1");
+      params.append("limit", "10000");
+      params.append("role", userDetails.Role);
+      if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
+        params.append("referenceID", userDetails.ReferenceID);
+      }
+      if (dateRange?.from) {
+        params.append("startDate", dateRange.from.toISOString());
+        params.append("endDate", (dateRange.to ?? dateRange.from).toISOString());
+      }
+      const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
+      if (!res.ok) {
+        toast.error("Failed to fetch data for export");
+        return;
+      }
+      const data = await res.json();
+      let logs = data.data || [];
+      // Filter by email on client side
+      if (emailFilter) {
+        logs = logs.filter((log: ActivityLog) => log.Email.toLowerCase() === emailFilter.toLowerCase());
+      }
+
+      if (logs.length === 0) {
+        toast.error("No data to export");
+        return;
+      }
+
+      // Import exceljs and file-saver dynamically
+      const ExcelJS = (await import("exceljs")).default;
+      const { saveAs } = await import("file-saver");
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Activity Logs");
+
+      // Add headers
+      worksheet.columns = [
+        { header: "Reference ID", key: "ReferenceID", width: 20 },
+        { header: "Email", key: "Email", width: 30 },
+        { header: "Type", key: "Type", width: 15 },
+        { header: "Status", key: "Status", width: 15 },
+        { header: "Location", key: "Location", width: 40 },
+        { header: "Date Created", key: "date_created", width: 25 },
+        { header: "Remarks", key: "Remarks", width: 40 },
+        { header: "TSM", key: "TSM", width: 15 },
+        { header: "Site Visit Account", key: "SiteVisitAccount", width: 30 },
+      ];
+
+      // Style header row
+      worksheet.getRow(1).font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFCC1318" },
+      };
+
+      // Add data
+      logs.forEach((log: ActivityLog) => {
+        worksheet.addRow({
+          ReferenceID: log.ReferenceID,
+          Email: log.Email,
+          Type: log.Type,
+          Status: log.Status,
+          Location: log.Location,
+          date_created: new Date(log.date_created).toLocaleString("en-PH"),
+          Remarks: log.Remarks,
+          TSM: log.TSM,
+          SiteVisitAccount: log.SiteVisitAccount,
+        });
+      });
+
+      // Generate filename with date range
+      const startDate = dateRange?.from ? new Date(dateRange.from).toISOString().split('T')[0] : "all";
+      const endDate = dateRange?.to ? new Date(dateRange.to).toISOString().split('T')[0] : "all";
+      const filename = `activity-logs-${startDate}-to-${endDate}.xlsx`;
+
+      // Write and save
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      saveAs(blob, filename);
+
+      toast.success(`Exported ${logs.length} records to Excel`);
+    } catch (error) {
+      console.error("Export error:", error);
+      toast.error("Failed to export data");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -1340,6 +1495,93 @@ function ReportsTab({ monthlyStats, allLogs, userId }: {
 
         {/* Offline Activities Card */}
         <OfflineActivitiesCard userId={userId} />
+
+        {/* Export Data Section */}
+        <div className="mt-5 bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-[var(--brand-light)] flex items-center justify-center flex-shrink-0">
+              <FileDown size={20} className="text-[var(--brand-primary)]" />
+            </div>
+            <div>
+              <p className="text-[13px] font-semibold text-gray-800">Export Data</p>
+              <p className="text-[11px] text-gray-400">Export logs to Excel</p>
+            </div>
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="mb-4">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Date Range</p>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={dateRange?.from ? new Date(dateRange.from).toISOString().split('T')[0] : ""}
+                onChange={(e) => setDateRange((prev) => {
+                  const from = e.target.value ? new Date(e.target.value) : undefined;
+                  return from ? { from, to: prev?.to } : undefined;
+                })}
+                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[13px] outline-none focus:border-[var(--brand-primary)] transition-all"
+              />
+              <input
+                type="date"
+                value={dateRange?.to ? new Date(dateRange.to).toISOString().split('T')[0] : ""}
+                onChange={(e) => setDateRange((prev) => {
+                  const to = e.target.value ? new Date(e.target.value) : undefined;
+                  return prev?.from && to ? { from: prev.from, to } : prev;
+                })}
+                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[13px] outline-none focus:border-[var(--brand-primary)] transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Email Filter */}
+          <div className="mb-4">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Filter by Email (Optional)</p>
+            <div className="relative">
+              <input
+                type="email"
+                list="emails"
+                value={emailFilter}
+                onChange={(e) => setEmailFilter(e.target.value)}
+                placeholder="Enter email address"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pl-11 text-[13px] outline-none focus:border-[var(--brand-primary)] transition-all"
+              />
+              <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <datalist id="emails">
+                {allEmails.map((email) => (
+                  <option key={email} value={email} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          {/* Preview Count */}
+          {previewCount !== null && (
+            <div className="bg-[var(--brand-light)] rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
+              <span className="text-[12px] font-medium text-gray-700">Records to export:</span>
+              <span className="text-[18px] font-bold text-[var(--brand-primary)]">{previewCount}</span>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={previewExport}
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-3 text-[13px] font-semibold text-gray-700 hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <BarChart3 size={16} />}
+              Preview
+            </button>
+            <button
+              onClick={exportToExcel}
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 bg-[var(--brand-primary)] rounded-xl px-4 py-3 text-[13px] font-bold text-white hover:bg-[var(--brand-primary-hover)] active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+              Export
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3059,7 +3301,7 @@ function ActivityPage() {
           userDetails={userDetails}
         />;
       case "reports":
-        return <ReportsTab monthlyStats={monthlyStats} allLogs={allVisibleAccounts} userId={userId} />;
+        return <ReportsTab monthlyStats={monthlyStats} allLogs={allVisibleAccounts} userId={userId} userDetails={userDetails} />;
       case "profile":
         return <ProfileTab userDetails={userDetails} userId={userId} isActive={activeTab === "profile"} onLogout={handleLogout} onFaceRegister={() => setFaceRegisterOpen(true)} onBiometricRegister={handleBiometricRegister} onUpdateSecondaryEmail={handleUpdateSecondaryEmail} onUpdateFaceVerification={handleUpdateFaceVerification} />;
       case "admin":
