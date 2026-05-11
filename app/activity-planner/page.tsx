@@ -1280,6 +1280,8 @@ function ReportsTab({ monthlyStats, allLogs, userId, userDetails }: {
   // Export state
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [emailFilter, setEmailFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"All" | "On Field" | "Client Visit">("All");
+  const [statusFilter, setStatusFilter] = useState<"All" | "Login" | "Logout">("All");
   const [loading, setLoading] = useState(false);
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const [allEmails, setAllEmails] = useState<string[]>([]);
@@ -1330,6 +1332,14 @@ function ReportsTab({ monthlyStats, allLogs, userId, userDetails }: {
         if (emailFilter) {
           logs = logs.filter((log: ActivityLog) => log.Email.toLowerCase() === emailFilter.toLowerCase());
         }
+        // Filter by type
+        if (typeFilter !== "All") {
+          logs = logs.filter((log: ActivityLog) => log.Type === typeFilter);
+        }
+        // Filter by status
+        if (statusFilter !== "All") {
+          logs = logs.filter((log: ActivityLog) => log.Status === statusFilter);
+        }
         setPreviewCount(logs.length);
       } else {
         setPreviewCount(0);
@@ -1367,6 +1377,14 @@ function ReportsTab({ monthlyStats, allLogs, userId, userDetails }: {
       // Filter by email on client side
       if (emailFilter) {
         logs = logs.filter((log: ActivityLog) => log.Email.toLowerCase() === emailFilter.toLowerCase());
+      }
+      // Filter by type
+      if (typeFilter !== "All") {
+        logs = logs.filter((log: ActivityLog) => log.Type === typeFilter);
+      }
+      // Filter by status
+      if (statusFilter !== "All") {
+        logs = logs.filter((log: ActivityLog) => log.Status === statusFilter);
       }
 
       if (logs.length === 0) {
@@ -1551,6 +1569,48 @@ function ReportsTab({ monthlyStats, allLogs, userId, userDetails }: {
                   <option key={email} value={email} />
                 ))}
               </datalist>
+            </div>
+          </div>
+
+          {/* Type Filter */}
+          <div className="mb-4">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Filter by Type</p>
+            <div className="flex gap-2">
+              {["All", "On Field", "Client Visit"].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setTypeFilter(type as any)}
+                  className={[
+                    "flex-1 rounded-xl px-4 py-2.5 text-[12px] font-semibold transition-all active:scale-95",
+                    typeFilter === type
+                      ? "bg-[var(--brand-primary)] text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ].join(" ")}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Status Filter */}
+          <div className="mb-4">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Filter by Status</p>
+            <div className="flex gap-2">
+              {["All", "Login", "Logout"].map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status as any)}
+                  className={[
+                    "flex-1 rounded-xl px-4 py-2.5 text-[12px] font-semibold transition-all active:scale-95",
+                    statusFilter === status
+                      ? "bg-[var(--brand-primary)] text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ].join(" ")}
+                >
+                  {status}
+                </button>
+              ))}
             </div>
           </div>
 
