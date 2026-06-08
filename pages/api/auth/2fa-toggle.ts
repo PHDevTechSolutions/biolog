@@ -14,27 +14,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ message: "Not authenticated" });
   }
 
-  const { data: session, error: sessionError } = await supabase
-    .from("sessions")
-    .select("userId")
-    .eq("token", sessionToken)
-    .single();
+  try {
+    const { data: session, error: sessionError } = await supabase
+      .from("sessions")
+      .select("userId")
+      .eq("token", sessionToken)
+      .single();
 
-  if (sessionError || !session) {
-    return res.status(401).json({ message: "Invalid session" });
+    if (sessionError || !session) {
+      return res.status(401).json({ message: "Invalid session" });
+    }
+
+    const { enabled } = req.body;
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ message: "Enabled (boolean) is required" });
+    }
+
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ twoFactorEnabled: enabled })
+      .eq("id", session.userId);
+
+    if (updateError) throw updateError;
+
+    return res.status(200).json({ message: `2FA ${enabled ? "enabled" : "disabled"} successfully` });
+  } catch (error: any) {
+    console.error("[2fa-toggle] error:", error);
+    return res.status(500).json({ message: "Internal server error", error: error.message });
   }
-
-  const { enabled } = req.body;
-  if (typeof enabled !== "boolean") {
-    return res.status(400).json({ message: "Enabled (boolean) is required" });
-  }
-
-  const { error: updateError } = await supabase
-    .from("users")
-    .update({ twoFactorEnabled: enabled })
-    .eq("id", session.userId);
-
-  if (updateError) throw updateError;
-
-  return res.status(200).json({ message: `2FA ${enabled ? "enabled" : "disabled"} successfully` });
 }

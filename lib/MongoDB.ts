@@ -11,7 +11,7 @@ export async function validateUser() {
   throw new Error("MongoDB is no longer supported. Please use Supabase instead.");
 }
 
-export async function registerUser() {
+export async function registerUser(userData: any) {
   throw new Error("MongoDB is no longer supported. Please use Supabase instead.");
 }
 

@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      const response = await registerUser({Email, Password, Role, Firstname, Lastname, ReferenceID });
+      const response = (await registerUser({Email, Password, Role, Firstname, Lastname, ReferenceID })) as any;
       if (response.success) {
         return res.status(200).json({ success: true });
       } else {
