@@ -1,8 +1,12 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { supabase } from "@/lib/supabase";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabase) {
+    console.error("[SetupAdmin] Supabase client not initialized.");
+    return res.status(500).json({ error: "Database connection error" });
+  }
   // Only allow GET request for this setup script
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });

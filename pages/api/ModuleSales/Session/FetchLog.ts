@@ -2,6 +2,11 @@ import { NextApiRequest, NextApiResponse } from "next";
 import { supabase } from "@/lib/supabase";
 
 export default async function fetchAccounts(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabase) {
+    console.error("[SessionFetchLog] Supabase client not initialized.");
+    return res.status(500).json({ error: "Database connection error" });
+  }
+
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).end(`Method ${req.method} Not Allowed`);

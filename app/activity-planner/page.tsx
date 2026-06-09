@@ -3476,6 +3476,9 @@ function ActivityPage() {
       {/* ── Face Registration Dialog ── */}
       <Dialog open={faceRegisterOpen} onOpenChange={setFaceRegisterOpen}>
         <DialogContent className="p-0 rounded-[28px] max-w-sm w-full mx-auto overflow-hidden border-0 shadow-2xl max-h-[92vh] flex flex-col">
+          <VisuallyHidden>
+            <DialogTitle>Face Registration</DialogTitle>
+          </VisuallyHidden>
           <div className="bg-[var(--brand-primary)] px-6 pt-5 pb-6 flex-shrink-0">
             <div className="flex items-center gap-3 mb-2">
               <button
@@ -3524,6 +3527,9 @@ function MeetingDetailsDialog({ open, onOpenChange, meeting, usersMap }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 rounded-[28px] max-w-sm w-full mx-auto overflow-hidden border-0 shadow-2xl">
+        <VisuallyHidden>
+          <DialogTitle>Meeting Details</DialogTitle>
+        </VisuallyHidden>
         <div className="bg-purple-600 px-6 pt-8 pb-10 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4">
             <button
@@ -3700,6 +3706,9 @@ function CreateMeetingDialog({ open, onOpenChange, userDetails, onSuccess }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 rounded-[28px] max-w-sm w-full mx-auto overflow-hidden border-0 shadow-2xl">
+        <VisuallyHidden>
+          <DialogTitle>Create Meeting</DialogTitle>
+        </VisuallyHidden>
         <div className="bg-purple-600 px-6 pt-5 pb-6">
           <div className="flex items-center gap-3 mb-2">
             <button onClick={() => onOpenChange(false)} className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors"><X size={15} /></button>

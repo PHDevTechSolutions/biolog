@@ -1,8 +1,12 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { supabase } from "@/lib/supabase";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export default async function updateProfile(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabase) {
+    console.error("[ProfileUpdate] Supabase client not initialized.");
+    return res.status(500).json({ error: "Database connection error" });
+  }
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).end(`Method ${req.method} Not Allowed`);

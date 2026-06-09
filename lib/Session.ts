@@ -7,7 +7,7 @@ export async function destroySession(req: NextApiRequest, res: NextApiResponse) 
   const cookies = req.headers.cookie ? parse(req.headers.cookie) : {};
   const sessionToken = cookies.session;
 
-  if (sessionToken) {
+  if (sessionToken && supabase) {
     try {
       await supabase.from("sessions").delete().eq("token", sessionToken);
     } catch (e) {

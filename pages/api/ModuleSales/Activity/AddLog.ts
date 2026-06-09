@@ -45,6 +45,7 @@ export default async function addActivityLog(
       email_address,
       address,
       manager, // Assuming manager is passed for Neon
+      type_client, // Client type (New Client or Existing Client)
       date_created: clientDateCreated, // offline timestamp from client
     } = req.body ?? {};
 
@@ -87,7 +88,11 @@ export default async function addActivityLog(
     }
 
     const officeStartTime = settings?.officeStartTime || "08:00";
-    const [startH, startM] = officeStartTime.split(":").map(Number);
+    let [startH, startM] = officeStartTime.split(":").map(Number);
+    
+    // Robust validation for startH and startM
+    if (isNaN(startH) || startH < 0 || startH > 23) startH = 8;
+    if (isNaN(startM) || startM < 0 || startM > 59) startM = 0;
 
     const startOfDay = new Date(resolvedDate);
     startOfDay.setHours(startH, startM, 0, 0);
@@ -197,7 +202,7 @@ export default async function addActivityLog(
             ${Remarks || ""}, 
             'For Approval',
             'Client Visit',
-            'New Client',
+            ${type_client || 'New Client'},
             ${accountRef},
             ${resolvedDate.toISOString()}
           )

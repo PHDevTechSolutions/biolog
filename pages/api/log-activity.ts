@@ -2,6 +2,11 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { supabase } from '@/lib/supabase';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabase) {
+    console.error("[LogActivity] Supabase client not initialized.");
+    return res.status(500).json({ message: "Database connection error" });
+  }
+
   if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
 
   const { email, department, status, timestamp } = req.body;

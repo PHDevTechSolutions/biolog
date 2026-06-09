@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { supabase } from "@/lib/supabase";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 
 /*
@@ -14,6 +14,11 @@ import { v4 as uuidv4 } from "uuid";
      return a clear message if the user tries email + password login.
 */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!supabase) {
+    console.error("[GoogleCallback] Supabase client not initialized.");
+    return res.status(500).json({ error: "Database connection error" });
+  }
+
   const { code, error } = req.query;
 
   if (error || !code) {

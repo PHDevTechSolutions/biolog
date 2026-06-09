@@ -3,7 +3,7 @@ import { serialize } from "cookie";
 import { supabase } from "@/lib/supabase";
 import nodemailer from "nodemailer";
 import { UAParser } from "ua-parser-js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
