@@ -572,7 +572,7 @@ export default function CreateSalesAttendance({
         </div>
 
         {/* ── Body ── */}
-        <div className={`flex-1 bg-brand-bg ${selectMenuOpen ? 'overflow-visible' : 'overflow-y-auto'}`}>
+        <div className={`flex-1 bg-brand-bg overflow-y-auto ${selectMenuOpen ? 'overflow-visible' : ''}`}>
           <div className="flex flex-col gap-4 p-5">
 
             {/* Camera */}

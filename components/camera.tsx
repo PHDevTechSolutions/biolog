@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as faceapi from "face-api.js";
 import { toast } from "sonner";
-import { RefreshCcw, SwitchCamera, Camera as CameraIcon, CheckCircle2, AlertCircle } from "lucide-react";
+import { RefreshCcw, SwitchCamera, Camera as CameraIcon, CheckCircle2, AlertCircle, Maximize2, Minimize2 } from "lucide-react";
 
 interface CameraProps {
   onCaptureAction: (dataUrl: string, faceData?: any) => void;
@@ -59,6 +59,7 @@ export default function Camera({
   const [isMatch, setIsMatch] = useState<boolean | null>(null);
   const [registrationStep, setRegistrationStep] = useState<number>(0);
   const [registrationTakesCount, setRegistrationTakesCount] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Sync ref → state for rendering
   const updateFaceStatus = useCallback((s: FaceStatus) => {
@@ -345,6 +346,32 @@ export default function Camera({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDevice, permissionGiven, cameraStarted]);
 
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+          await document.exitFullscreen();
+          setIsFullscreen(false);
+        }
+    } catch (err) {
+      console.error("Error toggling fullscreen:", err);
+      toast.error("Failed to enter fullscreen");
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   const flipCamera = () => {
     if (devices.length < 2) return;
     const idx = devices.findIndex((d) => d.deviceId === selectedDevice);
@@ -532,13 +559,24 @@ export default function Camera({
           )}
 
           <div
-            className={`relative w-full select-none overflow-hidden rounded-2xl border border-gray-200 bg-black transition-all ${canTap ? "cursor-pointer active:scale-[0.995]" : "cursor-not-allowed"}`}
+            className={`relative w-full select-none overflow-hidden rounded-2xl border border-gray-200 bg-black transition-all ${canTap ? "cursor-pointer active:scale-[0.995]" : "cursor-not-allowed"} ${isFullscreen ? "fixed inset-0 z-50 rounded-none aspect-video" : ""}`}
             onClick={handleTap}
             onTouchStart={(e) => { e.preventDefault(); handleTap(); }}
-            style={{ aspectRatio: "4/3" }}
+            style={{ aspectRatio: isFullscreen ? undefined : "4/3" }}
           >
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             {!skipFaceVerification && <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none" />}
+            
+            {/* Fullscreen button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFullscreen();
+              }}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-colors z-10"
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
 
             {countdown !== null && countdown > 0 && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50">
