@@ -18,7 +18,6 @@ import { getAllPendingLogs, removePendingLog, type PendingLog } from "@/lib/offl
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import OfflineBanner from "@/components/OfflineBanner";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { useSwipeToRefresh } from "@/hooks/useSwipeToRefresh";
 import { haptic } from "@/lib/haptics";
 import { usePreferences } from "@/lib/preferences";
@@ -2648,27 +2647,44 @@ function ActivityPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { userId, setUserId } = useUser();
-  const [resolvedQueryUserId, setResolvedQueryUserId] = useState<string>("");
+  const [resolvedQueryUserId, setResolvedQueryUserId] = useState<string | null>(null);
   
-  // Resolve queryUserId: first check ?id param, then check offline session, then redirect to login
+  // Resolve queryUserId: first check ?id param, then localStorage, then offline session, then redirect to login
   useEffect(() => {
+    console.log("[ActivityPlanner] Resolving queryUserId, searchParams:", Object.fromEntries(searchParams?.entries() || []));
     const idParam = searchParams?.get("id") ?? "";
+    console.log("[ActivityPlanner] idParam:", idParam);
     if (idParam) {
+      console.log("[ActivityPlanner] Setting resolvedQueryUserId from idParam:", idParam);
       setResolvedQueryUserId(idParam);
       return;
     }
     
-    // No id param, check for shortcut and offline session
+    // Check localStorage for userId
+    const localStorageUserId = localStorage.getItem("userId");
+    console.log("[ActivityPlanner] localStorageUserId:", localStorageUserId);
+    if (localStorageUserId) {
+      console.log("[ActivityPlanner] Setting resolvedQueryUserId from localStorage:", localStorageUserId);
+      setResolvedQueryUserId(localStorageUserId);
+      return;
+    }
+    
+    // No id param or localStorage, check offline session (with or without shortcut)
     (async () => {
       const shortcut = searchParams?.get("shortcut");
-      if (shortcut) {
-        const { getOfflineSession } = await import("@/lib/offline-auth");
-        const offlineUserId = await getOfflineSession();
-        if (offlineUserId) {
-          setResolvedQueryUserId(offlineUserId);
-          return;
-        }
+      console.log("[ActivityPlanner] No idParam/localStorage, checking shortcut and offline session, shortcut:", shortcut);
+      const { getOfflineSession } = await import("@/lib/offline-auth");
+      const offlineUserId = await getOfflineSession();
+      console.log("[ActivityPlanner] Offline session userId:", offlineUserId);
+      if (offlineUserId) {
+        // Also save to localStorage for consistency with login flow
+        localStorage.setItem("userId", offlineUserId);
+        setResolvedQueryUserId(offlineUserId);
+        return;
       }
+      
+      // If we still don't have anything, set to empty string to trigger redirect
+      setResolvedQueryUserId("");
     })();
   }, [searchParams]);
   
@@ -2755,6 +2771,11 @@ function ActivityPage() {
   }, [queryUserId, userId, setUserId]);
 
   useEffect(() => {
+    if (queryUserId === null) {
+      // Still resolving, do nothing yet
+      return;
+    }
+    
     if (!queryUserId) { 
       setError("User ID is missing."); 
       setLoading(false); 
@@ -2795,7 +2816,9 @@ function ActivityPage() {
 
         // Background refresh from network
         try {
-          const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`);
+          const res = await fetch(`/api/user?id=${encodeURIComponent(queryUserId)}`, {
+            credentials: "include"
+          });
           if (!res.ok) throw new Error("Failed to fetch user data");
           const fresh = await res.json();
           if (!cancelled) {
@@ -2900,7 +2923,8 @@ function ActivityPage() {
   const { unreadCount: notifUnreadCount, markAllRead: markNotifsRead } = useNotifications(userDetails?.ReferenceID);
 
   // ── Session timeout warning ───────────────────────────────────────────────
-  const { showWarning: showSessionWarning, secondsLeft: sessionSecondsLeft, refresh: refreshSession, dismiss: dismissSessionWarning } = useSessionTimeout();
+  // const { showWarning: showSessionWarning, secondsLeft: sessionSecondsLeft, refresh: refreshSession, dismiss: dismissSessionWarning } = useSessionTimeout();
+  const showSessionWarning = false;
 
   // ── User preferences (haptics, sound, notifications, etc.) ───────────────
   const { prefs: appPrefs } = usePreferences();
@@ -3429,41 +3453,6 @@ function ActivityPage() {
         </div>
       )}
 
-      {/* ── Session timeout warning modal ── */}
-      {showSessionWarning && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
-          <div className="w-full max-w-sm bg-white rounded-t-[32px] p-6 pb-10 shadow-2xl">
-            <div className="w-10 h-1 rounded-full bg-gray-200 mx-auto mb-5" />
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-11 h-11 rounded-[14px] bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <Clock size={20} className="text-amber-600" />
-              </div>
-              <div>
-                <p className="text-[15px] font-bold text-gray-900">Session Expiring Soon</p>
-                <p className="text-[12px] text-gray-400 mt-0.5">You'll be logged out in {sessionSecondsLeft}s</p>
-              </div>
-            </div>
-            <p className="text-[13px] text-gray-500 mb-5 leading-relaxed">
-              Your session is about to expire. Stay logged in to continue using the app.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={dismissSessionWarning}
-                className="flex-1 py-3.5 rounded-2xl border border-gray-200 text-[13px] font-semibold text-gray-500 hover:bg-gray-50 transition-all"
-              >
-                Dismiss
-              </button>
-              <button
-                onClick={refreshSession}
-                className="flex-1 py-3.5 rounded-2xl bg-[#CC1318] text-white text-[13px] font-bold hover:bg-[#A8100F] active:scale-95 transition-all"
-              >
-                Stay Logged In
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Dialogs */}
       <CreateAttendance
         open={createAttendanceOpen}
@@ -3521,6 +3510,7 @@ function ActivityPage() {
             <p className="text-[13px] text-gray-600 mb-4 leading-relaxed">
               Please look at the camera and take 3 clear photos of your face from different angles to complete the registration.
             </p>
+            
             <CameraLazy
               mode="register"
               onRegisterAction={handleFaceRegister}

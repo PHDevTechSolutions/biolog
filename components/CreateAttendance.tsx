@@ -194,7 +194,9 @@ export default function CreateAttendance({
       setLastTime(cachedStatus.time);
     }
     
-    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}&type=On Field`)
+    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}&type=On Field`, {
+      credentials: "include"
+    })
       .then((r) => r.json())
       .then((data) => {
         if (data?.lastStatus) {
@@ -285,6 +287,7 @@ export default function CreateAttendance({
         const res = await fetch("/api/ModuleSales/Activity/AddLog", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body:    JSON.stringify({ ...basePayload, PhotoURL: photoURL }),
         });
         const data = await res.json();

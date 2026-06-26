@@ -214,19 +214,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .update({ DeviceId: deviceId, LoginAttempts: 0, Status: "Active", Connection: "Online", LastLoginAt: new Date().toISOString() })
       .eq("id", user.id);
 
-    // For development, use sameSite: 'lax' and no secure flag
-    // For production, use sameSite: 'lax' and secure: true
-    const cookieOptions = {
+    res.setHeader("Set-Cookie", serialize("session", sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax" as const,
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
       path: "/",
-    };
-    
-    console.log("[Login] Setting session cookie with options:", cookieOptions);
-    res.setHeader("Set-Cookie", serialize("session", sessionToken, cookieOptions));
-    console.log(`[Login] Successful login for: ${user.Email}, session token length: ${sessionToken.length}`);
+    }));
+
+    console.log(`[Login] Successful login for: ${user.Email}`);
 
     return res.status(200).json({
       message: "Login successful",

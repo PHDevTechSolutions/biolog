@@ -34,9 +34,8 @@ export function useSessionTimeout(): SessionTimeoutState {
       setSecondsLeft((s) => {
         if (s <= 1) {
           clearInterval(countdownRef.current!);
-          // Temporarily disabled for debugging
-          // window.location.href = "/Login";
-          console.log("[SessionTimeout] Would redirect to login (disabled for debug)");
+          // Session expired — redirect to login
+          window.location.href = "/Login";
           return 0;
         }
         return s - 1;
@@ -47,25 +46,12 @@ export function useSessionTimeout(): SessionTimeoutState {
   const scheduleWarning = useCallback(() => {
     clearTimers();
 
-    let sessionStartStr = localStorage.getItem(LS_KEY);
-    let sessionStart: number;
-    
-    if (!sessionStartStr) {
-      sessionStart = Date.now();
-      localStorage.setItem(LS_KEY, String(sessionStart));
-    } else {
-      sessionStart = parseInt(sessionStartStr, 10);
-      if (isNaN(sessionStart) || sessionStart <= 0) {
-        sessionStart = Date.now();
-        localStorage.setItem(LS_KEY, String(sessionStart));
-      }
-    }
+    const sessionStart = parseInt(localStorage.getItem(LS_KEY) ?? "0", 10) || Date.now();
+    localStorage.setItem(LS_KEY, String(sessionStart));
 
     const elapsed   = Date.now() - sessionStart;
     const remaining = SESSION_DURATION_MS - elapsed;
     const warnIn    = remaining - WARN_BEFORE_MS;
-
-    console.log(`[SessionTimeout] Session started at ${new Date(sessionStart).toLocaleString()}, elapsed ${elapsed/1000/60} minutes, warn in ${warnIn/1000/60} minutes`);
 
     if (warnIn <= 0) {
       // Already in warning window
@@ -88,7 +74,6 @@ export function useSessionTimeout(): SessionTimeoutState {
         setShowWarning(false);
         clearTimers();
         scheduleWarning();
-        console.log("[SessionTimeout] Session refreshed");
       }
     } catch {
       // If refresh fails, just dismiss — user will be redirected on next API call

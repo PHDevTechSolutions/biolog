@@ -425,6 +425,9 @@ export function LoginForm({
           // ── Set session start time for session timeout hook ──────────────────────
           localStorage.setItem("acculog_session_start", Date.now().toString());
           
+          // ── Store userId in localStorage for future visits ───────────────────────
+          localStorage.setItem("userId", offlineResult.userId);
+          
           // Persist offline session so protected pages stay accessible
           try {
             const { setOfflineSession } = await import("@/lib/offline-auth");
@@ -442,9 +445,10 @@ export function LoginForm({
       }
 
       try {
-        const response = await fetch("/api/login", {
+        const res = await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include", // Important: receive cookies in response!
           body: JSON.stringify({
             Email: isPinLogin ? undefined : Email,
             Password: isPinLogin ? undefined : Password,
@@ -452,16 +456,20 @@ export function LoginForm({
             pin, isPinLogin, deviceId, otp,
           }),
         });
-        const result = await response.json();
+        const result = await res.json();
 
-        if (response.ok && result.twoFactorRequired) {
+        if (res.ok && result.twoFactorRequired) {
           setTwoFactorRequired(true);
           toast.info("Verification code sent to your email.");
           return;
         }
 
-        if (response.ok && result.userId) {
+        if (res.ok && result.userId) {
           console.log("[LoginForm] Login successful! userId:", result.userId);
+          
+          // ── Store userId in localStorage for future visits ───────────────────────
+          localStorage.setItem("userId", result.userId);
+          console.log("[LoginForm] Set userId in localStorage:", result.userId);
           
           // ── Set session start time for session timeout hook ──────────────────────
           localStorage.setItem("acculog_session_start", Date.now().toString());
@@ -507,6 +515,12 @@ export function LoginForm({
             isPinLogin,
           });
           if (offlineResult) {
+            // ── Set session start time for session timeout hook ──────────────────────
+            localStorage.setItem("acculog_session_start", Date.now().toString());
+            
+            // ── Store userId in localStorage for future visits ───────────────────────
+            localStorage.setItem("userId", offlineResult.userId);
+            
             // Persist offline session so protected pages stay accessible
             try {
               const { setOfflineSession } = await import("@/lib/offline-auth");
@@ -544,14 +558,18 @@ export function LoginForm({
       }) as any;
       if (!credential) throw new Error("Biometric authentication failed.");
       const response = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credentialId: credential.id, deviceId }),
-      });
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include", // Important: receive cookies in response!
+          body: JSON.stringify({ credentialId: credential.id, deviceId }),
+        });
       const result = await response.json();
       if (response.ok && result.userId) {
         // ── Set session start time for session timeout hook ──────────────────────
         localStorage.setItem("acculog_session_start", Date.now().toString());
+        
+        // ── Store userId in localStorage for future visits ───────────────────────
+        localStorage.setItem("userId", result.userId);
         
         // Store offline session for protected page access
         const { setOfflineSession } = await import("@/lib/offline-auth");

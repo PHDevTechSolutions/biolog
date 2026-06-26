@@ -10,23 +10,20 @@ export default function ProtectedPageWrapper({ children }: { children: React.Rea
 
   useEffect(() => {
     const checkSession = async () => {
-      console.log("[ProtectedPageWrapper] Starting session check...");
-      
       // ── Offline fast-path ────────────────────────────────────────────────
+      // If the browser is offline, skip the network check and rely on the
+      // locally-stored offline session instead.
       if (typeof navigator !== "undefined" && !navigator.onLine) {
-        console.log("[ProtectedPageWrapper] Browser offline, checking offline session...");
         try {
           const { getOfflineSession } = await import("@/lib/offline-auth");
           const userId = await getOfflineSession();
-          console.log("[ProtectedPageWrapper] Offline session userId:", userId);
           if (userId) {
             setLoading(false);
             return;
           }
-        } catch (err) {
-          console.error("[ProtectedPageWrapper] Error getting offline session:", err);
+        } catch {
+          // IndexedDB unavailable — fall through to redirect
         }
-        console.log("[ProtectedPageWrapper] No offline session, redirecting to login...");
         router.push("/Login");
         return;
       }
@@ -34,41 +31,31 @@ export default function ProtectedPageWrapper({ children }: { children: React.Rea
       // ── Online path ──────────────────────────────────────────────────────
       try {
         const deviceId = localStorage.getItem("deviceId") || "";
-        console.log("[ProtectedPageWrapper] Online, checking session with deviceId:", deviceId);
         const res = await fetch("/api/check-session", {
           headers: { "x-device-id": deviceId },
         });
 
-        console.log("[ProtectedPageWrapper] check-session response status:", res.status);
-        
         if (res.status !== 200) {
-          console.log("[ProtectedPageWrapper] Session invalid, redirecting to login...");
+          // Clear stale offline session on explicit auth failure
           try {
             const { clearOfflineSession } = await import("@/lib/offline-auth");
             await clearOfflineSession();
-          } catch (err) {
-            console.error("[ProtectedPageWrapper] Error clearing offline session:", err);
-          }
+          } catch { /* silent */ }
           router.push("/Login");
           return;
         }
 
-        console.log("[ProtectedPageWrapper] Session valid!");
         setLoading(false);
-      } catch (err) {
-        console.error("[ProtectedPageWrapper] Network error checking session:", err);
+      } catch {
+        // Network error — try offline session as fallback
         try {
           const { getOfflineSession } = await import("@/lib/offline-auth");
           const userId = await getOfflineSession();
-          console.log("[ProtectedPageWrapper] Fallback offline session userId:", userId);
           if (userId) {
             setLoading(false);
             return;
           }
-        } catch (err2) {
-          console.error("[ProtectedPageWrapper] Error getting fallback offline session:", err2);
-        }
-        console.log("[ProtectedPageWrapper] No fallback session, redirecting to login...");
+        } catch { /* silent */ }
         router.push("/Login");
       }
     };

@@ -228,7 +228,9 @@ export default function CreateSalesAttendance({
       onChangeAction("Status", nextAction);
     }
 
-    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}&type=Client Visit`)
+    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}&type=Client Visit`, {
+      credentials: "include"
+    })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch status");
         return res.json();
@@ -461,6 +463,7 @@ export default function CreateSalesAttendance({
         const res = await fetch("/api/ModuleSales/Activity/AddLog", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body:    JSON.stringify({ ...basePayload, PhotoURL: photoURL }),
         });
         if (!res.ok) throw new Error("Failed to save attendance");
