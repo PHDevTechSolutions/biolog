@@ -41,10 +41,12 @@ export default function Camera({
   const registrationStepRef = useRef<number>(0);
   const modeRef = useRef(mode);
   const registeredDescriptorsRef = useRef(registeredDescriptors);
+  const skipFaceVerificationRef = useRef(skipFaceVerification);
 
   // Keep refs in sync with props/state
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { registeredDescriptorsRef.current = registeredDescriptors; }, [registeredDescriptors]);
+  useEffect(() => { skipFaceVerificationRef.current = skipFaceVerification; }, [skipFaceVerification]);
 
   // ── UI state (only for rendering) ──
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -129,6 +131,14 @@ export default function Camera({
     overlay.width = video.videoWidth || video.clientWidth;
     overlay.height = video.videoHeight || video.clientHeight;
     ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    // If skipFaceVerification is true, don't do face detection
+    if (skipFaceVerificationRef.current) {
+      updateFaceStatus("idle");
+      updateIsMatch(null);
+      rafRef.current = requestAnimationFrame(runFaceDetection);
+      return;
+    }
 
     if (!modelsLoadedRef.current) {
       rafRef.current = requestAnimationFrame(runFaceDetection);
@@ -460,16 +470,16 @@ export default function Camera({
   ];
 
   const getStatusLabel = () => {
+    if (skipFaceVerification) return "Tap to capture";
     if (faceStatus === "idle") return "Starting camera…";
     if (faceStatus === "unsupported") return "Tap to capture";
-    if (faceStatus === "no-face") return skipFaceVerification ? "No face detected — tap to capture anyway" : "No face detected";
+    if (faceStatus === "no-face") return "No face detected";
     if (faceStatus === "multiple") return "Multiple faces detected";
     if (faceStatus === "detected") {
       if (mode === "register") {
         const step = Math.min(registrationStep, 2);
         return `${registrationGuidance[step].icon} Step ${registrationTakesCount + 1}/3: ${registrationGuidance[step].label}`;
       }
-      if (skipFaceVerification) return "Face detected — tap to capture";
       const isRegistered = registeredDescriptors && registeredDescriptors.length > 0;
       if (!isRegistered) return "User not registered — capture blocked";
       if (isMatch === null) return "Face detected — verifying identity…";
@@ -506,7 +516,7 @@ export default function Camera({
       {/* Live camera */}
       {permissionGiven && !capturedImage && (
         <>
-          {faceStatus !== "idle" && (
+          {!skipFaceVerification && faceStatus !== "idle" && (
             <div className={`flex items-center gap-2 rounded-2xl px-3 py-2 ${statusBg}`}>
               {(faceStatus === "no-face" || faceStatus === "multiple" || (faceStatus === "detected" && !isGreenStatus)) && (
                 <AlertCircle size={13} style={{ color: statusColor }} />
@@ -528,7 +538,7 @@ export default function Camera({
             style={{ aspectRatio: "4/3" }}
           >
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+            {!skipFaceVerification && <canvas ref={overlayRef} className="absolute inset-0 w-full h-full pointer-events-none" />}
 
             {countdown !== null && countdown > 0 && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50">
@@ -539,7 +549,7 @@ export default function Camera({
               </div>
             )}
 
-            {countdown === null && (faceStatus === "unsupported" || faceStatus === "idle") && (
+            {countdown === null && (skipFaceVerification || faceStatus === "unsupported" || faceStatus === "idle") && (
               <div className="absolute inset-0 flex items-end justify-center pb-4 pointer-events-none">
                 <div className="bg-black/50 rounded-full px-4 py-2">
                   <span className="text-white text-[12px] font-medium">Tap to capture</span>
@@ -547,7 +557,7 @@ export default function Camera({
               </div>
             )}
 
-            {countdown === null && faceStatus === "detected" && (
+            {!skipFaceVerification && countdown === null && faceStatus === "detected" && (
               <div className="absolute inset-0 flex items-end justify-center pb-4 pointer-events-none">
                 <div
                   className="rounded-full px-4 py-2 flex items-center gap-2 shadow-lg"
@@ -557,9 +567,7 @@ export default function Camera({
                   <span className="text-white text-[12px] font-medium">
                     {mode === "register"
                       ? `Tap to take photo ${registrationTakesCount + 1}/3`
-                      : skipFaceVerification
-                        ? "Tap to capture photo"
-                        : (!(registeredDescriptors && registeredDescriptors.length > 0)
+                      : (!(registeredDescriptors && registeredDescriptors.length > 0)
                             ? "User not registered"
                             : (isMatch === false ? "Identity mismatch!" : "Tap to capture"))}
                   </span>
@@ -567,7 +575,7 @@ export default function Camera({
               </div>
             )}
 
-            {countdown === null && (faceStatus === "no-face" || faceStatus === "multiple") && (
+            {!skipFaceVerification && countdown === null && (faceStatus === "no-face" || faceStatus === "multiple") && (
               <div className="absolute inset-0 flex items-end justify-center pb-6 pointer-events-none">
                 <div className="bg-[#CC1318]/90 backdrop-blur-sm rounded-full px-5 py-2.5 flex items-center gap-2 shadow-lg">
                   <AlertCircle size={14} className="text-white" />

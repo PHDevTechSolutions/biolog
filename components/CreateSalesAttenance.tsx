@@ -157,6 +157,60 @@ export default function CreateSalesAttendance({
     getLocation();
   }, [open]);
 
+  /* ── Helper functions for last status cache ── */
+  const getLastStatusCacheKey = () => {
+    // Create key with today's date in YYYY-MM-DD format
+    const today = new Date().toISOString().split('T')[0];
+    return `last-status-${userDetails.ReferenceID}-${today}`;
+  };
+
+  const saveLastStatusToCache = (status: string | null) => {
+    try {
+      const cacheData = {
+        status,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(getLastStatusCacheKey(), JSON.stringify(cacheData));
+    } catch (e) {
+      console.error("Failed to save last status to cache", e);
+    }
+  };
+
+  const loadLastStatusFromCache = () => {
+    try {
+      const cached = localStorage.getItem(getLastStatusCacheKey());
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      console.error("Failed to load last status from cache", e);
+    }
+    return null;
+  };
+
+  const clearOldLastStatusCaches = () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const prefix = `last-status-${userDetails.ReferenceID}-`;
+      
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix) && key !== getLastStatusCacheKey()) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to clear old last status caches", e);
+    }
+  };
+
+  // Clear old caches when dialog opens
+  useEffect(() => {
+    if (open && userDetails.ReferenceID) {
+      clearOldLastStatusCaches();
+    }
+  }, [open, userDetails.ReferenceID]);
+
   /* ── Login Summary — fetch ONCE when dialog opens ── */
   /* ── Login Summary — fetch ONCE when dialog opens ── */
   useEffect(() => {
@@ -166,7 +220,16 @@ export default function CreateSalesAttendance({
     }
 
     setLoadingStatus(true);
-    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}`)
+    
+    // First try to load from cache for immediate display
+    const cachedStatus = loadLastStatusFromCache();
+    if (cachedStatus) {
+      setLastStatus(cachedStatus.status);
+      const nextAction = cachedStatus.status === "Login" ? "Logout" : "Login";
+      onChangeAction("Status", nextAction);
+    }
+
+    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}&type=Client Visit`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch status");
         return res.json();
@@ -177,6 +240,7 @@ export default function CreateSalesAttendance({
           setLastStatus(null);
           onChangeAction("Status", "Login");
           setLoginCountToday(0);
+          saveLastStatusToCache(null);
           return;
         }
 
@@ -186,11 +250,18 @@ export default function CreateSalesAttendance({
 
         const nextAction = status === "Login" ? "Logout" : "Login";
         onChangeAction("Status", nextAction);
+        
+        // Save to cache
+        saveLastStatusToCache(status);
       })
       .catch(() => {
-        setLastStatus(null);
-        onChangeAction("Status", "Login");
-        setLoginCountToday(0);
+        // If fetch fails, use cached status if available
+        if (!cachedStatus) {
+          setLastStatus(null);
+          onChangeAction("Status", "Login");
+          setLoginCountToday(0);
+          saveLastStatusToCache(null);
+        }
       })
       .finally(() => setLoadingStatus(false));
 
@@ -198,6 +269,38 @@ export default function CreateSalesAttendance({
     // changes reference every render and would cause an infinite fetch loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, userDetails.ReferenceID]);
+
+  // Helper function to get storage key
+  const getStorageKey = () => {
+    return `client-list-${userDetails.ReferenceID}-${userDetails.Role}`;
+  };
+
+  // Function to save accounts to localStorage
+  const saveAccountsToLocalStorage = (data: any[], count: number) => {
+    try {
+      const storageData = {
+        data,
+        count,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(getStorageKey(), JSON.stringify(storageData));
+    } catch (e) {
+      console.error("Failed to save accounts to localStorage:", e);
+    }
+  };
+
+  // Function to load accounts from localStorage
+  const loadAccountsFromLocalStorage = () => {
+    try {
+      const stored = localStorage.getItem(getStorageKey());
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error("Failed to load accounts from localStorage:", e);
+    }
+    return null;
+  };
 
   /* ── Fetch accounts when Existing Client selected ── */
   useEffect(() => {
@@ -216,21 +319,44 @@ export default function CreateSalesAttendance({
     setLoadingAccounts(true);
     setAccountsError(null);
 
+    // First, try to load from localStorage for immediate display
+    const cachedData = loadAccountsFromLocalStorage();
+    if (cachedData) {
+      setSiteVisitAccounts(cachedData.data || []);
+      setSiteVisitAccountsCount(cachedData.count || 0);
+    }
+
     const fetchAccounts = (url: string) => {
       fetch(url)
         .then((r) => r.json())
         .then((json) => {
           if (json.success) {
-            setSiteVisitAccounts(json.data || []);
-            setSiteVisitAccountsCount(json.count || json.data?.length || 0);
+            const data = json.data || [];
+            const count = json.count || data.length || 0;
+            setSiteVisitAccounts(data);
+            setSiteVisitAccountsCount(count);
             setAccountsError(null);
+            // Save fresh data to localStorage
+            saveAccountsToLocalStorage(data, count);
           } else {
-            setSiteVisitAccounts([]);
-            setSiteVisitAccountsCount(0);
+            // If fetch fails but we have cached data, keep it
+            if (!cachedData) {
+              setSiteVisitAccounts([]);
+              setSiteVisitAccountsCount(0);
+            }
             setAccountsError(json.error || "No accounts found");
           }
         })
-        .catch(() => setAccountsError("Error fetching accounts"))
+        .catch(() => {
+          // If fetch fails but we have cached data, that's okay!
+          if (!cachedData) {
+            setSiteVisitAccounts([]);
+            setSiteVisitAccountsCount(0);
+            setAccountsError("Error fetching accounts");
+          } else {
+            setAccountsError(null); // No error if we have cached data
+          }
+        })
         .finally(() => setLoadingAccounts(false));
     };
 
@@ -251,6 +377,15 @@ export default function CreateSalesAttendance({
       return toast.error("Please select a company.");
     }
     if (locationAddress === "Fetching location...") return toast.error("Location not ready yet.");
+
+    // Save the new status to cache immediately for offline use
+    const newStatus = formData.Status;
+    saveLastStatusToCache(newStatus);
+    setLastStatus(newStatus);
+    
+    // Update the next status
+    const nextAction = newStatus === "Login" ? "Logout" : "Login";
+    onChangeAction("Status", nextAction);
 
     setLoading(true);
 
@@ -376,13 +511,7 @@ export default function CreateSalesAttendance({
   return (
     <Dialog open={open} onOpenChange={onOpenChangeAction}>
       <DialogContent
-        className="p-0 rounded-[28px] max-w-sm w-full mx-auto overflow-hidden border-0 shadow-2xl max-h-[92vh] flex flex-col"
-        onPointerDownOutside={(e) => {
-          if (selectMenuOpen) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (selectMenuOpen) e.preventDefault();
-        }}
+        className="p-0 rounded-[28px] max-w-sm w-full mx-auto border-0 shadow-2xl max-h-[92vh] flex flex-col"
       >
         <VisuallyHidden>
           <DialogTitle>Site Visit Log</DialogTitle>
@@ -443,7 +572,7 @@ export default function CreateSalesAttendance({
         </div>
 
         {/* ── Body ── */}
-        <div className="overflow-y-auto flex-1 bg-brand-bg">
+        <div className={`flex-1 bg-brand-bg ${selectMenuOpen ? 'overflow-visible' : 'overflow-y-auto'}`}>
           <div className="flex flex-col gap-4 p-5">
 
             {/* Camera */}
@@ -488,7 +617,6 @@ export default function CreateSalesAttendance({
                             setClientType(t);
                             if (t === "New Client") {
                               onChangeAction("SiteVisitAccount", "");
-                              onChangeAction("Status", "For Approval");
                               onChangeAction("address", locationAddress);
                             } else {
                               // Reset status to the one calculated for Login/Logout
@@ -606,9 +734,17 @@ export default function CreateSalesAttendance({
                 {clientType === "Existing Client" && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
-                        Site Visit Account
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
+                          Site Visit Account
+                        </p>
+                        {!navigator.onLine && siteVisitAccounts.length > 0 && (
+                          <span className="text-[10px] font-medium text-amber-600 bg-amber-50 rounded-full px-2 py-0.5 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            Offline
+                          </span>
+                        )}
+                      </div>
                       {siteVisitAccountsCount > 0 && (
                         <span className="text-[11px] font-semibold text-[#1A7A4A] bg-[#EEF7F2] rounded-xl px-2.5 py-0.5">
                           {siteVisitAccountsCount} accounts
@@ -627,7 +763,7 @@ export default function CreateSalesAttendance({
                         <span className="text-[12px] text-brand-primary">{accountsError}</span>
                       </div>
                     ) : (
-                      <div className="rounded-2xl border border-gray-200 bg-white">
+                      <div className="rounded-2xl border border-gray-200 bg-white relative">
                         <Select
                           options={siteVisitAccounts.map((a) => ({
                             value: a.company_name,
@@ -644,14 +780,9 @@ export default function CreateSalesAttendance({
                           onChange={(s) => onChangeAction("SiteVisitAccount", s?.value || "")}
                           placeholder="Search company..."
                           classNamePrefix="mb-select"
-                          menuPortalTarget={
-                            typeof document !== "undefined" ? document.body : null
-                          }
-                          menuPosition="fixed"
                           onMenuOpen={() => setSelectMenuOpen(true)}
                           onMenuClose={() => setSelectMenuOpen(false)}
                           styles={{
-                            menuPortal: (base) => ({ ...base, zIndex: 9999 }),
                             control: (base) => ({
                               ...base,
                               border: "none",
@@ -669,6 +800,11 @@ export default function CreateSalesAttendance({
                               boxShadow: "0 8px 32px rgba(26,10,11,0.12)",
                               border: "1px solid #EDE5E1",
                               fontSize: "13px",
+                              zIndex: 100,
+                            }),
+                            menuList: (base) => ({
+                              ...base,
+                              maxHeight: "200px",
                             }),
                             option: (base, state) => ({
                               ...base,

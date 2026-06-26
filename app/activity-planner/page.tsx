@@ -2422,10 +2422,10 @@ function ProfileTab({
           ) : sessions.length === 0 ? (
             <div className="p-4 text-center text-[12px] text-gray-400">No active sessions</div>
           ) : (
-            sessions.map((session) => {
+            sessions.map((session, index) => {
               const isCurrent = session.token === document.cookie.split('; ').find(row => row.startsWith('session='))?.split('=')[1];
               return (
-                <div key={session._id} className="w-full flex items-center gap-4 bg-white rounded-2xl border border-gray-100 px-4 py-4 shadow-sm">
+                <div key={session._id || session.token || index} className="w-full flex items-center gap-4 bg-white rounded-2xl border border-gray-100 px-4 py-4 shadow-sm">
                   <div className={`w-11 h-11 rounded-[14px] flex items-center justify-center flex-shrink-0 ${isCurrent ? 'bg-[#EEF7F2]' : 'bg-gray-50'}`}>
                     {session.os?.toLowerCase().includes("win") || session.os?.toLowerCase().includes("mac") ? (
                       <Laptop size={20} className={isCurrent ? 'text-[#1A7A4A]' : 'text-gray-400'} />

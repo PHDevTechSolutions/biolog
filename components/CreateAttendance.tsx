@@ -125,21 +125,85 @@ export default function CreateAttendance({
     navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
   }, [open]);
 
+  /* ── Helper functions for last status cache ── */
+  const getLastStatusCacheKey = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return `create-attendance-last-status-${userDetails.ReferenceID}-${today}`;
+  };
+
+  const saveLastStatusToCache = (status: "Login" | "Logout" | null, time: string | null) => {
+    try {
+      const cacheData = {
+        status,
+        time,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(getLastStatusCacheKey(), JSON.stringify(cacheData));
+    } catch (e) {
+      console.error("Failed to save last status to cache", e);
+    }
+  };
+
+  const loadLastStatusFromCache = () => {
+    try {
+      const cached = localStorage.getItem(getLastStatusCacheKey());
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      console.error("Failed to load last status from cache", e);
+    }
+    return null;
+  };
+
+  const clearOldLastStatusCaches = () => {
+    try {
+      const prefix = `create-attendance-last-status-${userDetails.ReferenceID}-`;
+      
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix) && key !== getLastStatusCacheKey()) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to clear old last status caches", e);
+    }
+  };
+
+  // Clear old caches when dialog opens
+  useEffect(() => {
+    if (open && userDetails.ReferenceID) {
+      clearOldLastStatusCaches();
+    }
+  }, [open, userDetails.ReferenceID]);
+
   // Fetch last status
   useEffect(() => {
     if (!open) return;
+    
+    // First try to load from cache
+    const cachedStatus = loadLastStatusFromCache();
+    if (cachedStatus) {
+      setLastStatus(cachedStatus.status);
+      setLastTime(cachedStatus.time);
+    }
+    
     fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}`)
       .then((r) => r.json())
       .then((data) => {
         if (data?.Status) {
+          const time = new Date(data.date_created).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" });
           setLastStatus(data.Status);
-          setLastTime(new Date(data.date_created).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }));
+          setLastTime(time);
+          saveLastStatusToCache(data.Status, time);
         } else {
           setLastStatus(null);
           setLastTime(null);
+          saveLastStatusToCache(null, null);
         }
       })
-      .catch(() => { /* silent — offline */ });
+      .catch(() => { /* silent — offline, use cached status if available */ });
   }, [open, userDetails.ReferenceID]);
 
   const resetForm = () => {
@@ -152,6 +216,13 @@ export default function CreateAttendance({
     if (!formData.Status) return toast.error("Please select Login or Logout.");
     if (!isLocationReady(locationAddress)) return toast.error("Location not ready yet. Please wait.");
 
+    // Save the new status to cache immediately
+    const newStatus = formData.Status as "Login" | "Logout" | null;
+    const newTime = new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" });
+    saveLastStatusToCache(newStatus, newTime);
+    setLastStatus(newStatus);
+    setLastTime(newTime);
+    
     setLoading(true);
 
     // ── Geofence check ────────────────────────────────────────────────────

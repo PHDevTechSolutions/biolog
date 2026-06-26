@@ -119,24 +119,28 @@ export default async function addActivityLog(
       console.error("[AddLog] Duplicate check error:", dupError);
     }
 
+    // Determine the actual status we're checking for (never For Approval)
+    const actualStatus = Status.trim() === "For Approval" ? (lastActivityToday?.Status === "Login" ? "Logout" : "Login") : Status.trim();
+
     if (
-      lastActivityToday?.Status === Status &&
+      lastActivityToday?.Status === actualStatus &&
       lastActivityToday?.Type === Type
     ) {
       return res.status(409).json({
-        error: `Duplicate: already ${Status.toLowerCase()} for ${Type} on this work day.`,
+        error: `Duplicate: already ${actualStatus.toLowerCase()} for ${Type} on this work day.`,
       });
     }
 
     /* ── Build document for Supabase ─────────────────── */
+    // Never use "For Approval" in tasklog - always use Login/Logout!
     // If it's a New Client, we map company_name to SiteVisitAccount for the tasklog
-    const effectiveSiteVisitAccount = Status === "For Approval" ? (company_name || SiteVisitAccount) : SiteVisitAccount;
+    const effectiveSiteVisitAccount = (type_client === "New Client" || Status === "For Approval") ? (company_name || SiteVisitAccount) : SiteVisitAccount;
 
     const newLog: any = {
       ReferenceID:  ReferenceID.trim(),
       Email:        Email.trim(),
       Type:         Type.trim(),
-      Status:       Status.trim(),
+      Status:       actualStatus,
       Remarks:      typeof Remarks === "string" ? Remarks.trim() : "",
       TSM:          typeof TSM === "string" ? TSM.trim() : "",
       date_created: resolvedDate.toISOString(),

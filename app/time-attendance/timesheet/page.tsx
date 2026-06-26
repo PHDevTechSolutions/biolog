@@ -19,8 +19,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import ProtectedPageWrapper from "@/components/protected-page-wrapper";
-import { Search, DownloadCloud, Info, Clock, AlertCircle, ArrowDownLeft, ArrowUpRight, ArrowLeft, Calendar as CalendarIcon,  } from "lucide-react";
+import { Search, DownloadCloud, Info, Clock, AlertCircle, ArrowDownLeft, ArrowUpRight, ArrowLeft, Calendar as CalendarIcon, WifiOff } from "lucide-react";
 import type { DateRange } from "react-day-picker";
+import { cacheLogs, getCachedLogs } from "@/lib/offline-logs-cache";
+import { getAllPendingLogs } from "@/lib/offline-store";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -141,6 +143,22 @@ function TimesheetPage() {
     gracePeriod: 15
   });
 
+  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+
+  // Handle online/offline status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Fetch system settings
   useEffect(() => {
     fetch("/api/admin/settings")
@@ -193,32 +211,74 @@ function TimesheetPage() {
       setLoading(true);
       try {
         let allLogs: ActivityLog[] = [];
-        let page = 1;
-        const limit = 100;
-        let totalPages = 1;
-        do {
-          const params = new URLSearchParams();
-          params.append("page", page.toString());
-          params.append("limit", limit.toString());
-          params.append("role", userDetails.Role);
-          if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
-            params.append("referenceID", userDetails.ReferenceID);
+        const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+
+        if (isOnline) {
+          let page = 1;
+          const limit = 100;
+          let totalPages = 1;
+          do {
+            const params = new URLSearchParams();
+            params.append("page", page.toString());
+            params.append("limit", limit.toString());
+            params.append("role", userDetails.Role);
+            if (userDetails.Role !== "SuperAdmin" && userDetails.Role !== "Human Resources") {
+              params.append("referenceID", userDetails.ReferenceID);
+            }
+            if (dateCreatedFilterRange?.from) {
+              params.append("startDate", dateCreatedFilterRange.from.toISOString());
+              params.append("endDate", (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString());
+            }
+            const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
+            if (!res.ok) throw new Error("Failed to fetch logs");
+            const data = await res.json();
+            allLogs = allLogs.concat(data.data ?? []);
+            totalPages = data.pagination?.totalPages ?? 1;
+            page++;
+          } while (page <= totalPages);
+          
+          // Cache the online logs
+          await cacheLogs(allLogs as unknown as Record<string, unknown>[]);
+        } else {
+          // Load from cache
+          allLogs = (await getCachedLogs()) as unknown as ActivityLog[];
+        }
+
+        // Merge with pending (offline) logs
+        try {
+          const pendingLogs = await getAllPendingLogs();
+          const pendingActivities = pendingLogs.map(p => ({
+            ...(p.payload as any),
+            _id: p.id,
+          })) as ActivityLog[];
+          // Combine, remove duplicates by _id/id
+          const allIds = new Set();
+          const combined: ActivityLog[] = [];
+          for (const log of [...pendingActivities, ...allLogs]) {
+            const id = (log as any)._id || (log as any).id;
+            if (!allIds.has(id)) {
+              allIds.add(id);
+              combined.push(log);
+            }
           }
-          if (dateCreatedFilterRange?.from) {
-            params.append("startDate", dateCreatedFilterRange.from.toISOString());
-            params.append("endDate", (dateCreatedFilterRange.to ?? dateCreatedFilterRange.from).toISOString());
-          }
-          const res = await fetch(`/api/ModuleSales/Activity/FetchLog?${params.toString()}`);
-          if (!res.ok) throw new Error("Failed to fetch logs");
-          const data = await res.json();
-          allLogs = allLogs.concat(data.data ?? []);
-          totalPages = data.pagination?.totalPages ?? 1;
-          page++;
-        } while (page <= totalPages);
+          allLogs = combined;
+        } catch {
+          // Ignore pending logs if error
+        }
+
+        // Sort by date_created descending
+        allLogs.sort((a, b) => new Date(b.date_created).getTime() - new Date(a.date_created).getTime());
+
         setPosts(allLogs);
       } catch {
-        toast.error("Error fetching activity logs.");
-        setPosts([]);
+        // If online fetch failed, try to load from cache
+        try {
+          const cachedLogs = (await getCachedLogs()) as unknown as ActivityLog[];
+          setPosts(cachedLogs);
+        } catch {
+          toast.error("Error fetching activity logs.");
+          setPosts([]);
+        }
       } finally {
         setLoading(false);
       }
@@ -475,8 +535,16 @@ function TimesheetPage() {
 
           <div className="h-4 w-px bg-gray-200" />
 
-          <div>
-            <p className="text-xs font-semibold text-brand-primary uppercase tracking-wider">Timesheet</p>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold text-brand-primary uppercase tracking-wider">Timesheet</p>
+              {!isOnline && (
+                <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 rounded-full px-2 py-0.5 flex items-center gap-1">
+                  <WifiOff size={10} />
+                  Offline
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-gray-400">
               {dateCreatedFilterRange?.from
                 ? `${formatShortDate(new Date(dateCreatedFilterRange.from))}${dateCreatedFilterRange.to ? ` – ${formatShortDate(new Date(dateCreatedFilterRange.to))}` : ""}`
