@@ -1,9 +1,9 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { serialize } from "cookie";
 import { supabase } from "@/lib/supabase";
-import nodemailer from "nodemailer";
 import { UAParser } from "ua-parser-js";
 import bcrypt from "bcryptjs";
+import { verify } from "otplib";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -160,40 +160,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // ── 2FA Logic ─────────────────────────────────────────
     if (user.twoFactorEnabled && !otp && !credentialId) {
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-      await supabase.from("users").update({ otp: generatedOtp, otpExpiry }).eq("id", user.id);
-
-      try {
-        const transporter = nodemailer.createTransport({
-          service: "gmail",
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          },
-        });
-
-        const recipient = user.SecondaryEmail || user.Email;
-        await transporter.sendMail({
-          from: `"Acculog Security" <${process.env.EMAIL_USER}>`,
-          to: recipient,
-          subject: "Your Verification Code",
-          html: `<p>Your verification code is: <b>${generatedOtp}</b>. Valid for 10 minutes.</p>`,
-        });
-        console.log(`[Login] OTP sent to: ${recipient}`);
-      } catch (e) {
-        console.error("[Login] Failed to send 2FA email:", e);
-      }
-
-      return res.status(200).json({ twoFactorRequired: true, message: "OTP sent to your email." });
+      return res.status(200).json({ twoFactorRequired: true, message: "Verification code required." });
     }
 
     if (user.twoFactorEnabled && otp && !credentialId) {
-      if (user.otp !== otp || new Date() > new Date(user.otpExpiry)) {
-        return res.status(401).json({ message: "Invalid or expired OTP." });
+      if (!user.twoFactorSecret) {
+        return res.status(400).json({ message: "2FA setup not complete" });
       }
-      await supabase.from("users").update({ otp: null, otpExpiry: null }).eq("id", user.id);
+      
+      const result = await verify({
+        token: otp,
+        secret: user.twoFactorSecret
+      });
+      
+      if (!result.valid) {
+        return res.status(401).json({ message: "Invalid verification code." });
+      }
     }
 
     // ── Success: Create Session ──────────────────────────────────

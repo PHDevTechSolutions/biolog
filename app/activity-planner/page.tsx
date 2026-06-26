@@ -2018,6 +2018,13 @@ function ProfileTab({
   const [faceVerificationLoading, setFaceVerificationLoading] = useState(false);
   const [secondaryEmail, setSecondaryEmail] = useState(userDetails?.SecondaryEmail || "");
   const [emailUpdating, setEmailUpdating] = useState(false);
+  
+  // 2FA Setup states
+  const [showTwoFactorSetup, setShowTwoFactorSetup] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [twoFactorSecret, setTwoFactorSecret] = useState<string | null>(null);
+  const [twoFactorToken, setTwoFactorToken] = useState("");
+  const [twoFactorSetupStep, setTwoFactorSetupStep] = useState<'initial' | 'qr' | 'verify'>('initial');
 
   // PWA Install Prompt
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -2133,6 +2140,93 @@ function ProfileTab({
     }
   };
 
+  // 2FA Setup Functions
+  const startTwoFactorSetup = async () => {
+    setTwoFactorLoading(true);
+    try {
+      const res = await fetch("/api/auth/2fa/generate-secret", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setQrCodeUrl(data.qrCodeUrl);
+        setTwoFactorSecret(data.secret);
+        setTwoFactorSetupStep('qr');
+        setShowTwoFactorSetup(true);
+      } else {
+        const errorData = await res.json().catch(() => ({ message: "Unknown error" }));
+        console.error("2FA setup error:", errorData);
+        toast.error(errorData.message || "Failed to start 2FA setup");
+      }
+    } catch (e) {
+      console.error("2FA setup exception:", e);
+      toast.error("Failed to start 2FA setup");
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const verifyTwoFactor = async () => {
+    setTwoFactorLoading(true);
+    try {
+      const res = await fetch("/api/auth/2fa/verify-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: twoFactorToken })
+      });
+      
+      if (res.ok) {
+        toast.success("2FA setup complete!");
+        // Refresh user details
+        window.location.reload(); // Simple way to refresh user data
+      } else {
+        const errorData = await res.json().catch(() => ({ message: "Invalid verification code" }));
+        console.error("2FA verify error:", errorData);
+        toast.error(errorData.message || "Invalid verification code");
+      }
+    } catch (e) {
+      console.error("2FA verify exception:", e);
+      toast.error("Failed to verify 2FA");
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const disableTwoFactor = async () => {
+    setTwoFactorLoading(true);
+    try {
+      const res = await fetch("/api/auth/2fa/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      
+      if (res.ok) {
+        toast.success("2FA disabled");
+        // Refresh user details
+        window.location.reload();
+      } else {
+        const errorData = await res.json().catch(() => ({ message: "Unknown error" }));
+        console.error("2FA disable error:", errorData);
+        toast.error(errorData.message || "Failed to disable 2FA");
+      }
+    } catch (e) {
+      console.error("2FA disable exception:", e);
+      toast.error("Failed to disable 2FA");
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const cancelTwoFactorSetup = () => {
+    setShowTwoFactorSetup(false);
+    setQrCodeUrl(null);
+    setTwoFactorSecret(null);
+    setTwoFactorToken("");
+    setTwoFactorSetupStep('initial');
+  };
+
 
 
   const initials = userDetails
@@ -2214,54 +2308,49 @@ function ProfileTab({
 
 
 
-          {/* 2FA Toggle */}
-          <div className="w-full flex items-center gap-4 bg-white rounded-2xl border border-gray-100 px-4 py-4 text-left shadow-sm">
-            <div className="w-11 h-11 rounded-[14px] bg-[#EEF7F2] flex items-center justify-center flex-shrink-0">
-              <ShieldCheck size={20} className="text-[#1A7A4A]" />
+          {/* 2FA Setup Section */}
+          <div className="w-full flex flex-col gap-3 bg-white rounded-2xl border border-gray-100 px-4 py-4 text-left shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-[14px] bg-[#EEF7F2] flex items-center justify-center flex-shrink-0">
+                <ShieldCheck size={20} className="text-[#1A7A4A]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-gray-800">2-Step Verification</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {userDetails?.twoFactorEnabled 
+                    ? "Protect account with authenticator app (TOTP)" 
+                    : "Protect account with authenticator app (TOTP)"}
+                </p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-gray-800">2-Step Verification</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">Protect account with email OTP</p>
-            </div>
-            <button
-              onClick={async () => {
-                if (!userId || !userDetails || twoFactorLoading) return;
-                
-                const newStatus = !userDetails.twoFactorEnabled;
-                setTwoFactorLoading(true);
-                
-                try {
-                  const res = await fetch("/api/profile-update", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId, twoFactorEnabled: newStatus }),
-                  });
-                  
-                  if (res.ok) {
-                    toast.success(`2-Step Verification ${newStatus ? "enabled" : "disabled"}`);
-                    // Update local state through callback if provided
-                    if (onUpdateFaceVerification) {
-                      onUpdateFaceVerification(newStatus);
-                    }
-                  } else {
-                    const errorData = await res.json().catch(() => ({}));
-                    toast.error(errorData.message || "Failed to update 2-Step Verification");
-                  }
-                } catch (e) {
-                  toast.error("An error occurred while updating 2-Step Verification");
-                } finally {
-                  setTwoFactorLoading(false);
-                }
-              }}
-              disabled={twoFactorLoading}
-              className={[
-                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
-                userDetails?.twoFactorEnabled ? 'bg-[var(--brand-primary)]' : 'bg-gray-200',
-                twoFactorLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-              ].join(" ")}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userDetails?.twoFactorEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
+
+            {userDetails?.twoFactorEnabled ? (
+              <button
+                onClick={disableTwoFactor}
+                disabled={twoFactorLoading}
+                className="w-full flex items-center justify-center gap-2 bg-red-50 text-red-600 rounded-xl px-4 py-3 text-[12px] font-semibold hover:bg-red-100 transition-colors disabled:opacity-50"
+              >
+                {twoFactorLoading ? (
+                  <span className="w-4 h-4 border-2 border-red-600/30 border-t-red-600 rounded-full animate-spin" />
+                ) : (
+                  <ShieldCheck size={14} />
+                )}
+                Disable 2-Step Verification
+              </button>
+            ) : (
+              <button
+                onClick={startTwoFactorSetup}
+                disabled={twoFactorLoading}
+                className="w-full flex items-center justify-center gap-2 bg-[var(--brand-primary)] text-white rounded-xl px-4 py-3 text-[12px] font-semibold hover:bg-[var(--brand-primary-hover)] transition-colors disabled:opacity-50"
+              >
+                {twoFactorLoading ? (
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <ShieldCheck size={14} />
+                )}
+                Set Up 2-Step Verification
+              </button>
+            )}
           </div>
 
           {/* Face Verification Toggle */}
@@ -2387,6 +2476,118 @@ function ProfileTab({
                 >
                   Got it
                 </button>
+              </div>
+            </div>
+          )}
+          
+          {/* 2FA Setup Modal */}
+          {showTwoFactorSetup && (
+            <div
+              className="fixed inset-0 z-[200] flex items-end justify-center"
+              style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+              onClick={cancelTwoFactorSetup}
+            >
+              <div
+                className="w-full max-w-sm bg-white rounded-t-[32px] p-6 pb-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="w-10 h-1 rounded-full bg-gray-200 mx-auto mb-5" />
+                
+                {twoFactorSetupStep === 'qr' && (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-11 h-11 rounded-[14px] bg-[#EEF7F2] flex items-center justify-center flex-shrink-0">
+                        <ShieldCheck size={20} className="text-[#1A7A4A]" />
+                      </div>
+                      <div>
+                        <p className="text-[15px] font-bold text-gray-900">Set Up Authenticator App</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Scan QR code or enter key manually</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-center bg-white rounded-2xl border border-gray-200 p-4">
+                      {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" className="w-48 h-48" />}
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Manual Setup Key</p>
+                      <p className="text-[12px] font-mono text-gray-700 break-all">{twoFactorSecret}</p>
+                    </div>
+                    
+                    <button
+                      onClick={() => setTwoFactorSetupStep('verify')}
+                      disabled={twoFactorLoading}
+                      className="w-full py-3.5 bg-[var(--brand-primary)] text-white rounded-2xl font-bold text-[14px] active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      Continue
+                    </button>
+                    
+                    <button
+                      onClick={cancelTwoFactorSetup}
+                      className="w-full py-2.5 text-gray-500 text-[13px] font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                
+                {twoFactorSetupStep === 'verify' && (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-11 h-11 rounded-[14px] bg-[#EEF7F2] flex items-center justify-center flex-shrink-0">
+                        <ShieldCheck size={20} className="text-[#1A7A4A]" />
+                      </div>
+                      <div>
+                        <p className="text-[15px] font-bold text-gray-900">Verify Setup</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Enter 6-digit code from authenticator app</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="2fa-token" className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
+                        Verification Code
+                      </label>
+                      <input
+                        id="2fa-token"
+                        type="text"
+                        maxLength={6}
+                        value={twoFactorToken}
+                        onChange={(e) => setTwoFactorToken(e.target.value.replace(/\D/g, ""))}
+                        placeholder="000000"
+                        className="w-full rounded-2xl border-2 border-gray-200 bg-white px-4 py-3.5 text-center text-[20px] font-bold tracking-[8px] text-gray-900 placeholder:text-gray-300 placeholder:tracking-normal outline-none focus:border-[var(--brand-primary)] focus:ring-4 focus:ring-[var(--brand-primary)]/5 transition-all"
+                      />
+                    </div>
+                    
+                    <button
+                      onClick={verifyTwoFactor}
+                      disabled={twoFactorLoading || twoFactorToken.length !== 6}
+                      className="w-full py-3.5 bg-[var(--brand-primary)] text-white rounded-2xl font-bold text-[14px] active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      {twoFactorLoading ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Verifying...
+                        </span>
+                      ) : (
+                        "Verify and Enable"
+                      )}
+                    </button>
+                    
+                    <button
+                      onClick={() => setTwoFactorSetupStep('qr')}
+                      className="w-full py-2.5 text-gray-500 text-[13px] font-semibold"
+                    >
+                      Back
+                    </button>
+                    
+                    <button
+                      onClick={cancelTwoFactorSetup}
+                      className="w-full py-2 text-gray-400 text-[12px]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

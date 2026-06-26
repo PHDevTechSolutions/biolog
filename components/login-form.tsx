@@ -718,7 +718,7 @@ export function LoginForm({
                     placeholder="Enter 6-digit code" required
                     className="w-full rounded-2xl border-2 border-brand-primary/20 bg-white px-4 py-3.5 text-center text-[20px] font-bold tracking-[8px] text-gray-900 placeholder:text-gray-300 placeholder:tracking-normal outline-none focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/5 transition-all"
                   />
-                  <p className="text-[11px] text-gray-400 text-center">Check your email for the code</p>
+                  <p className="text-[11px] text-gray-400 text-center">Enter 6-digit code from authenticator app</p>
                 </div>
               )}
 
