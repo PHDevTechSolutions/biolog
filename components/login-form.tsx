@@ -461,8 +461,11 @@ export function LoginForm({
         }
 
         if (response.ok && result.userId) {
+          console.log("[LoginForm] Login successful! userId:", result.userId);
+          
           // ── Set session start time for session timeout hook ──────────────────────
           localStorage.setItem("acculog_session_start", Date.now().toString());
+          console.log("[LoginForm] Set acculog_session_start in localStorage");
           
           // ── Cache credentials for offline login ──────────────────────────
           let cached = false;
@@ -475,6 +478,7 @@ export function LoginForm({
               userId:     result.userId,
             });
             await setOfflineSession(result.userId);
+            console.log("[LoginForm] Offline credentials cached successfully");
             cached = true;
           } catch (cacheErr) {
             // Log so we can debug — but don't block login
@@ -486,6 +490,7 @@ export function LoginForm({
               ? "Login successful! Credentials saved for offline use."
               : "Login successful! (Offline cache unavailable on this device)"
           );
+          console.log("[LoginForm] About to redirect to activity-planner...");
           setTimeout(() => {
             router.push(`/activity-planner?id=${encodeURIComponent(result.userId)}`);
           }, 800);

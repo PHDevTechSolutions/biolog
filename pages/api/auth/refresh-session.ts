@@ -35,16 +35,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("token", sessionToken);
 
     // Re-issue cookie with fresh 7-day expiry
-    res.setHeader(
-      "Set-Cookie",
-      serialize("session", sessionToken, {
-        httpOnly: true,
-        secure:   process.env.NODE_ENV !== "development",
-        sameSite: "lax",
-        maxAge:   60 * 60 * 24 * 7,
-        path:     "/",
-      })
-    );
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax" as const,
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
+    };
+    console.log("[refresh-session] Refreshing session cookie with options:", cookieOptions);
+    res.setHeader("Set-Cookie", serialize("session", sessionToken, cookieOptions));
 
     return res.status(200).json({ success: true });
   } catch (err) {

@@ -34,8 +34,9 @@ export function useSessionTimeout(): SessionTimeoutState {
       setSecondsLeft((s) => {
         if (s <= 1) {
           clearInterval(countdownRef.current!);
-          // Session expired — redirect to login
-          window.location.href = "/Login";
+          // Temporarily disabled for debugging
+          // window.location.href = "/Login";
+          console.log("[SessionTimeout] Would redirect to login (disabled for debug)");
           return 0;
         }
         return s - 1;
