@@ -230,7 +230,7 @@ function ActivityLogsContent() {
                             <Separator orientation="vertical" className="mx-2 h-4" />
                             <BreadcrumbItem>
                                 <BreadcrumbPage className="font-bold text-brand-primary">
-                                    Activity Logs
+                                    Activities Logs
                                 </BreadcrumbPage>
                             </BreadcrumbItem>
                         </BreadcrumbList>
