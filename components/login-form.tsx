@@ -363,8 +363,7 @@ export function LoginForm({
 }: React.ComponentProps<"div">) {
   const [Email, setEmail] = useState("");
   const [Password, setPassword] = useState("");
-  const [pin, setPin] = useState("");
-  const [isPinLogin, setIsPinLogin] = useState(false);
+
   const [otp, setOtp] = useState("");
   const [twoFactorRequired, setTwoFactorRequired] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -399,27 +398,20 @@ export function LoginForm({
     async (e: React.FormEvent) => {
       let deviceId = getDeviceId();
       e.preventDefault();
-      if (!isPinLogin && (!Email || !Password)) {
+      if (!Email || !Password) {
         toast.error("Email and Password are required!");
         return;
       }
-      if (isPinLogin && !pin) {
-        toast.error("PIN is required!");
-        return;
-      }
       setLoading(true);
-
-      const loginEmail  = isPinLogin ? Email : Email;
-      const loginSecret = isPinLogin ? pin   : Password;
 
       // Fast-path: if browser knows we're offline, skip the network round-trip
       // and verify directly against the local cache.
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         const { verifyOfflineCredential } = await import("@/lib/offline-auth");
         const offlineResult = await verifyOfflineCredential({
-          email:      loginEmail,
-          secret:     loginSecret,
-          isPinLogin,
+          email:      Email,
+          secret:     Password,
+          isPinLogin: false,
         });
         if (offlineResult) {
           // ── Set session start time for session timeout hook ──────────────────────
@@ -450,10 +442,9 @@ export function LoginForm({
           headers: { "Content-Type": "application/json" },
           credentials: "include", // Important: receive cookies in response!
           body: JSON.stringify({
-            Email: isPinLogin ? undefined : Email,
-            Password: isPinLogin ? undefined : Password,
-            email: isPinLogin ? Email : undefined,
-            pin, isPinLogin, deviceId, otp,
+            Email,
+            Password,
+            deviceId, otp,
           }),
         });
         const result = await res.json();
@@ -480,9 +471,9 @@ export function LoginForm({
           try {
             const { cacheCredential, setOfflineSession } = await import("@/lib/offline-auth");
             await cacheCredential({
-              email:      loginEmail,
-              secret:     loginSecret,
-              isPinLogin,
+              email:      Email,
+              secret:     Password,
+              isPinLogin: false,
               userId:     result.userId,
             });
             await setOfflineSession(result.userId);
@@ -510,9 +501,9 @@ export function LoginForm({
         try {
           const { verifyOfflineCredential } = await import("@/lib/offline-auth");
           const offlineResult = await verifyOfflineCredential({
-            email:      loginEmail,
-            secret:     loginSecret,
-            isPinLogin,
+            email:      Email,
+            secret:     Password,
+            isPinLogin: false,
           });
           if (offlineResult) {
             // ── Set session start time for session timeout hook ──────────────────────
@@ -538,7 +529,7 @@ export function LoginForm({
         setLoading(false);
       }
     },
-    [Email, Password, pin, otp, isPinLogin, router]
+    [Email, Password, otp, router]
   );
 
   const handleBiometricLogin = useCallback(async () => {
@@ -724,45 +715,26 @@ export function LoginForm({
                 </div>
               )}
 
-              {/* Password / PIN */}
+              {/* Password */}
               {!twoFactorRequired && (
                 <div className="flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center">
-                    <label htmlFor={isPinLogin ? "pin" : "password"} className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">
-                      {isPinLogin ? "Login PIN" : "Password"}
-                    </label>
-                    <button
-                      type="button" onClick={() => setIsPinLogin(!isPinLogin)}
-                      className="text-[11px] font-bold text-brand-primary hover:underline transition-all"
-                    >
-                      {isPinLogin ? "Use Password" : "Use PIN Login"}
-                    </button>
-                  </div>
+                  <label htmlFor="password" className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">
+                    Password
+                  </label>
                   <div className="relative">
-                    {isPinLogin ? (
-                      <input
-                        id="pin" type="password" inputMode="numeric" maxLength={6}
-                        value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-                        placeholder="Enter 6-digit PIN" required
-                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-center text-[20px] font-bold tracking-[8px] text-gray-900 placeholder:text-gray-300 placeholder:tracking-normal outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                      />
-                    ) : (
-                      <>
-                        <input
-                          id="password" type={showPassword ? "text" : "password"}
-                          value={Password} onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Enter your password" required autoComplete="current-password"
-                          className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 pr-12 text-[14px] text-gray-900 placeholder:text-gray-300 outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-all"
-                        />
-                        <button
-                          type="button" tabIndex={-1}
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
-                        >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </>
-                    )}
+                    <input
+                      id="password" type={showPassword ? "text" : "password"}
+                      value={Password} onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password" required autoComplete="current-password"
+                      className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 pr-12 text-[14px] text-gray-900 placeholder:text-gray-300 outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-all"
+                    />
+                    <button
+                      type="button" tabIndex={-1}
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
                   </div>
                 </div>
               )}
@@ -853,7 +825,7 @@ export function LoginForm({
                     )}
                   </button>
                   <p className="text-[11px] text-gray-400 text-center -mt-1">
-                    Fingerprint login requires internet. Use Email/PIN when offline.
+                    Fingerprint login requires internet. Use Email/Password when offline.
                   </p>
 
                   {/* ── SIGN UP BUTTON ── */}
