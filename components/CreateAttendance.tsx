@@ -96,11 +96,13 @@ export default function CreateAttendance({
       setLatitude(lat);
       setLongitude(lng);
 
+      const latLngFallback = `Latitude: ${lat.toFixed(6)}, Longitude: ${lng.toFixed(6)}`;
+      
       // Reverse geocode — if offline this will fail, fall back to coords string
       fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
         .then((r) => r.json())
-        .then((d) => setLocationAddress(d.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`))
-        .catch(() => setLocationAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`));
+        .then((d) => setLocationAddress(d.display_name || latLngFallback))
+        .catch(() => setLocationAddress(latLngFallback));
     };
 
     const onError = (err: GeolocationPositionError) => {
