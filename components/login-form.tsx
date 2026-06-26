@@ -422,6 +422,9 @@ export function LoginForm({
           isPinLogin,
         });
         if (offlineResult) {
+          // ── Set session start time for session timeout hook ──────────────────────
+          localStorage.setItem("acculog_session_start", Date.now().toString());
+          
           // Persist offline session so protected pages stay accessible
           try {
             const { setOfflineSession } = await import("@/lib/offline-auth");
@@ -458,6 +461,9 @@ export function LoginForm({
         }
 
         if (response.ok && result.userId) {
+          // ── Set session start time for session timeout hook ──────────────────────
+          localStorage.setItem("acculog_session_start", Date.now().toString());
+          
           // ── Cache credentials for offline login ──────────────────────────
           let cached = false;
           try {
@@ -539,6 +545,9 @@ export function LoginForm({
       });
       const result = await response.json();
       if (response.ok && result.userId) {
+        // ── Set session start time for session timeout hook ──────────────────────
+        localStorage.setItem("acculog_session_start", Date.now().toString());
+        
         // Store offline session for protected page access
         const { setOfflineSession } = await import("@/lib/offline-auth");
         await setOfflineSession(result.userId).catch(() => {});
