@@ -535,7 +535,7 @@ export function LoginForm({
   const handleBiometricLogin = useCallback(async () => {
     // Biometric login requires internet - check first
     if (typeof navigator !== "undefined" && !navigator.onLine) {
-      toast.error("Biometric login requires internet. Please use Email/PIN to login offline.");
+      toast.error("Biometric login requires internet. Please use Email/Password to login offline.");
       return;
     }
     
@@ -545,9 +545,14 @@ export function LoginForm({
       const challenge = new Uint8Array(32);
       window.crypto.getRandomValues(challenge);
       const credential = await navigator.credentials.get({
-        publicKey: { challenge, rpId: window.location.hostname, userVerification: "required" },
+        publicKey: { 
+          challenge, 
+          rpId: window.location.hostname, 
+          userVerification: "required",
+        },
       }) as any;
       if (!credential) throw new Error("Biometric authentication failed.");
+      console.log("Biometric credential obtained:", credential);
       const response = await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -555,6 +560,7 @@ export function LoginForm({
           body: JSON.stringify({ credentialId: credential.id, deviceId }),
         });
       const result = await response.json();
+      console.log("Login API response:", result);
       if (response.ok && result.userId) {
         // ── Set session start time for session timeout hook ──────────────────────
         localStorage.setItem("acculog_session_start", Date.now().toString());
@@ -573,6 +579,7 @@ export function LoginForm({
         toast.error(result.message || "Biometric login failed!");
       }
     } catch (err: any) {
+      console.error("Biometric login error:", err);
       if (err.name !== "NotAllowedError") toast.error(err.message || "An error occurred during biometric login.");
     } finally {
       setBiometricLoading(false);

@@ -3114,6 +3114,8 @@ function ActivityPage() {
       }) as any;
 
       if (!credential) throw new Error("Failed to create credential");
+      console.log("Created biometric credential:", credential);
+      console.log("Credential ID type:", typeof credential.id, "value:", credential.id);
 
       // 2. Send the credential info to profile-update API
       const res = await fetch("/api/profile-update", {

@@ -26,16 +26,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // ── Case 1: Biometric Login ──────────────────────────────────
     if (credentialId && !Password && !pin) {
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("*")
-        .contains("credentials", [{ id: credentialId }])
-        .maybeSingle();
+      console.log("[Login] Biometric login attempt with credentialId:", credentialId);
+      const { data: allUsers, error: allUsersError } = await supabase.from("users").select("*");
+      console.log("[Login] All users from DB:", allUsers);
+      
+      let foundUser = null;
+      if (allUsers && allUsers.length > 0) {
+        for (const u of allUsers) {
+          console.log("[Login] Checking user:", u.Email, "with credentials:", u.credentials);
+          if (u.credentials && Array.isArray(u.credentials)) {
+            const hasMatch = u.credentials.some((cred: any) => cred.id === credentialId);
+            if (hasMatch) {
+              foundUser = u;
+              break;
+            }
+          }
+        }
+      }
 
-      if (userError || !userData) {
+      if (!foundUser) {
+        console.log("[Login] No user found with matching credential");
         return res.status(401).json({ message: "Invalid biometric credential." });
       }
-      user = userData;
+      console.log("[Login] Found user for biometric login:", foundUser.Email);
+      user = foundUser;
 
     } else {
       // ── Case 2: Normal Password or PIN Login ──────────────────

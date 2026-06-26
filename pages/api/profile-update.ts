@@ -38,6 +38,13 @@ export default async function updateProfile(req: NextApiRequest, res: NextApiRes
   }
 
   try {
+    // First, get existing user data if we need to append credentials
+    let existingUser = null;
+    if (credentials) {
+      const { data } = await supabase.from("users").select("*").eq("id", targetId).maybeSingle();
+      existingUser = data;
+    }
+    
     const updatedUser: any = {
       updatedAt: new Date().toISOString(),
     };
@@ -51,7 +58,19 @@ export default async function updateProfile(req: NextApiRequest, res: NextApiRes
     if (ContactNumber) updatedUser.ContactNumber = ContactNumber;
     if (profilePicture) updatedUser.profilePicture = profilePicture;
     if (faceDescriptors) updatedUser.faceDescriptors = faceDescriptors;
-    if (credentials) updatedUser.credentials = credentials;
+    if (credentials) {
+      // Append new credentials instead of overwriting
+      const existingCreds = existingUser?.credentials || [];
+      const newCreds = [...existingCreds];
+      // Add only new credentials (avoid duplicates)
+      for (const newCred of credentials) {
+        const exists = newCreds.some(c => c.id === newCred.id);
+        if (!exists) {
+          newCreds.push(newCred);
+        }
+      }
+      updatedUser.credentials = newCreds;
+    }
     if (SecondaryEmail !== undefined) updatedUser.SecondaryEmail = SecondaryEmail;
     if (pin !== undefined) updatedUser.pin = pin;
     if (faceVerificationEnabled !== undefined) updatedUser.faceVerificationEnabled = faceVerificationEnabled;
