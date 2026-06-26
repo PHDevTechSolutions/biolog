@@ -86,10 +86,9 @@ export default function CreateAttendance({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Geolocation
-  useEffect(() => {
-    if (!open) return;
-
+  // Geolocation function
+  const getLocation = () => {
+    setLocationAddress(LOCATION_PENDING);
     const options: PositionOptions = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
 
     const onSuccess = (pos: GeolocationPosition) => {
@@ -123,6 +122,12 @@ export default function CreateAttendance({
     }
 
     navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+  };
+
+  // Geolocation
+  useEffect(() => {
+    if (!open) return;
+    getLocation();
   }, [open]);
 
   /* ── Helper functions for last status cache ── */
@@ -189,14 +194,14 @@ export default function CreateAttendance({
       setLastTime(cachedStatus.time);
     }
     
-    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}`)
+    fetch(`/api/ModuleSales/Activity/LastStatus?referenceId=${userDetails.ReferenceID}&type=On Field`)
       .then((r) => r.json())
       .then((data) => {
-        if (data?.Status) {
-          const time = new Date(data.date_created).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" });
-          setLastStatus(data.Status);
+        if (data?.lastStatus) {
+          const time = data.lastTime ? new Date(data.lastTime).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }) : null;
+          setLastStatus(data.lastStatus);
           setLastTime(time);
-          saveLastStatusToCache(data.Status, time);
+          saveLastStatusToCache(data.lastStatus, time);
         } else {
           setLastStatus(null);
           setLastTime(null);
@@ -436,7 +441,10 @@ export default function CreateAttendance({
                       <p className="text-[12px] text-gray-500 leading-snug">{locationAddress}</p>
                       {isLocationReady(locationAddress) && (
                         <button
-                          onClick={() => setShowMap(!showMap)}
+                          onClick={() => {
+                            getLocation();
+                            setShowMap(!showMap);
+                          }}
                           className="mt-2 text-[11px] font-semibold text-brand-primary hover:underline"
                         >
                           {showMap ? "Hide map" : "⚙ Set manually →"}

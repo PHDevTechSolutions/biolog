@@ -234,17 +234,8 @@ export default function CreateSalesAttendance({
         return res.json();
       })
       .then((data) => {
-        if (!data) {
-          // No activity today — first action is Login
-          setLastStatus(null);
-          onChangeAction("Status", "Login");
-          setLoginCountToday(0);
-          saveLastStatusToCache(null);
-          return;
-        }
-
-        // API returns { Status, date_created }
-        const status = data.Status ?? null;
+        // API returns { lastStatus, lastTime }
+        const status = data.lastStatus ?? null;
         setLastStatus(status);
 
         const nextAction = status === "Login" ? "Logout" : "Login";
