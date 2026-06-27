@@ -3905,7 +3905,7 @@ function CreateMeetingDialog({ open, onOpenChange, userDetails, onSuccess }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 rounded-[28px] max-w-sm w-full mx-auto overflow-hidden border-0 shadow-2xl">
         <VisuallyHidden>
-          <DialogTitle>Create Meeting</DialogTitle>
+          <DialogTitle>Create Meetings</DialogTitle>
         </VisuallyHidden>
         <div className="bg-purple-600 px-6 pt-5 pb-6">
           <div className="flex items-center gap-3 mb-2">
